@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "Expense Tracker",
+    "slug": "expense-tracker-sms",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "com.nikhil.expensetracker",
+      "permissions": [
+        "android.permission.READ_SMS",
+        "android.permission.RECEIVE_SMS",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.VIBRATE",
+        "android.permission.WAKE_LOCK",
+        "android.permission.RECEIVE_BOOT_COMPLETED"
+      ],
+      "versionCode": 1
+    },
+    "plugins": [
+      [
+        "react-native-permissions",
+        {
+          "androidPermissions": [
+            "android.permission.READ_SMS",
+            "android.permission.RECEIVE_SMS",
+            "android.permission.POST_NOTIFICATIONS",
+            "android.permission.VIBRATE"
+          ]
+        }
+      ]
+    ]
+  }
+}
