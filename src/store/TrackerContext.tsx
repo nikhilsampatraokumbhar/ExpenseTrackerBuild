@@ -2,6 +2,7 @@ import React, {
   createContext, useContext, useState, useEffect,
   useCallback, useRef, ReactNode,
 } from 'react';
+import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import notifee from '@notifee/react-native';
 import { TrackerState, ParsedTransaction, ActiveTracker, Group, TrackerType } from '../models/types';
@@ -65,8 +66,6 @@ export function TrackerProvider({ children, groups, userId }: Props) {
       const raw = await AsyncStorage.getItem(TRACKER_STATE_KEY);
       if (raw) setTrackerState(JSON.parse(raw));
 
-      // If the app was opened by tapping a notification action while backgrounded,
-      // notifee records the initial notification so we can restore state.
       const initial = await notifee.getInitialNotification();
       if (
         initial?.pressAction?.id === 'choose_tracker' &&
@@ -156,6 +155,16 @@ export function TrackerProvider({ children, groups, userId }: Props) {
 
   const toggleReimbursement = useCallback(async () => {
     setTrackerState(prev => {
+      const turningOn = !prev.reimbursement;
+      // Block if trying to turn ON while group trackers are active
+      if (turningOn && prev.activeGroupIds.length > 0) {
+        Alert.alert(
+          'Tracker Conflict',
+          'Reimbursement and Group trackers cannot be active at the same time.\n\nDisable your group trackers first.',
+          [{ text: 'OK' }],
+        );
+        return prev;
+      }
       const next = { ...prev, reimbursement: !prev.reimbursement };
       persistState(next);
       return next;
@@ -164,10 +173,19 @@ export function TrackerProvider({ children, groups, userId }: Props) {
 
   const toggleGroup = useCallback(async (groupId: string) => {
     setTrackerState(prev => {
-      const isActive = prev.activeGroupIds.includes(groupId);
+      const isCurrentlyActive = prev.activeGroupIds.includes(groupId);
+      // Block if trying to turn ON while reimbursement is active
+      if (!isCurrentlyActive && prev.reimbursement) {
+        Alert.alert(
+          'Tracker Conflict',
+          'Group and Reimbursement trackers cannot be active at the same time.\n\nDisable the Reimbursement tracker first.',
+          [{ text: 'OK' }],
+        );
+        return prev;
+      }
       const next = {
         ...prev,
-        activeGroupIds: isActive
+        activeGroupIds: isCurrentlyActive
           ? prev.activeGroupIds.filter(id => id !== groupId)
           : [...prev.activeGroupIds, groupId],
       };

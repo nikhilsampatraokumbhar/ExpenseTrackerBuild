@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, ActivityIndicator,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -57,25 +58,47 @@ export default function GroupDetailScreen() {
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={COLORS.primary}
+          colors={[COLORS.primary]}
+        />
+      }
+      showsVerticalScrollIndicator={false}
     >
       {/* Group header */}
-      <View style={[styles.header, { backgroundColor: `${groupColor}15` }]}>
+      <LinearGradient
+        colors={[`${groupColor}25`, COLORS.background]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={styles.header}
+      >
         <View style={[styles.groupIcon, { backgroundColor: `${groupColor}30` }]}>
           <Text style={[styles.groupInitial, { color: groupColor }]}>
             {group.name[0].toUpperCase()}
           </Text>
         </View>
         <Text style={styles.groupName}>{group.name}</Text>
-        <Text style={styles.groupMeta}>
-          {group.members.length} members · {formatCurrency(totalSpent)} total
-        </Text>
-      </View>
+        <View style={styles.metaRow}>
+          <View style={styles.metaChip}>
+            <Text style={styles.metaChipText}>
+              {group.members.length} members
+            </Text>
+          </View>
+          <View style={[styles.metaChip, { backgroundColor: `${groupColor}20` }]}>
+            <Text style={[styles.metaChipText, { color: groupColor }]}>
+              {formatCurrency(totalSpent)} total
+            </Text>
+          </View>
+        </View>
+      </LinearGradient>
 
       {/* Tracker toggle */}
       <TrackerToggle
         label="Track for this group"
-        subtitle="Auto-detect payments and split"
+        subtitle="Auto-detect payments and split equally"
         isActive={isTracking}
         onToggle={() => toggleGroup(groupId)}
         color={COLORS.groupColor}
@@ -85,7 +108,7 @@ export default function GroupDetailScreen() {
       <DebtSummary debts={activeGroupDebts} currentUserId={userId} />
 
       {/* Members */}
-      <Text style={styles.sectionTitle}>Members</Text>
+      <Text style={styles.sectionTitle}>MEMBERS</Text>
       {group.members.map(member => (
         <GroupMemberCard
           key={member.userId}
@@ -96,44 +119,87 @@ export default function GroupDetailScreen() {
       ))}
 
       {/* Transactions */}
-      <Text style={styles.sectionTitle}>Transactions</Text>
+      <Text style={styles.sectionTitle}>
+        EXPENSES ({activeGroupTransactions.length})
+      </Text>
+
       {activeGroupTransactions.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyText}>No group transactions yet</Text>
+          <View style={styles.emptyIcon}>
+            <Text style={styles.emptyEmoji}>💸</Text>
+          </View>
+          <Text style={styles.emptyText}>No group expenses yet</Text>
+          <Text style={styles.emptySubtext}>
+            Enable tracking above and make a payment to see it here
+          </Text>
         </View>
       ) : (
         activeGroupTransactions.map(txn => (
           <View key={txn.id} style={styles.txnCard}>
+            {/* Transaction header */}
             <View style={styles.txnHeader}>
-              <Text style={styles.txnDesc} numberOfLines={1}>{txn.description}</Text>
+              <View style={[styles.txnIcon, { backgroundColor: `${groupColor}20` }]}>
+                <Text style={[styles.txnIconText, { color: groupColor }]}>
+                  {(txn.merchant || txn.description)[0].toUpperCase()}
+                </Text>
+              </View>
+              <View style={styles.txnInfo}>
+                <Text style={styles.txnDesc} numberOfLines={1}>{txn.description}</Text>
+                <Text style={styles.txnDate}>{formatDate(txn.timestamp)}</Text>
+              </View>
               <Text style={styles.txnAmount}>{formatCurrency(txn.amount)}</Text>
             </View>
-            <Text style={styles.txnDate}>{formatDate(txn.timestamp)}</Text>
+
+            {/* Split label */}
+            <View style={styles.splitHeader}>
+              <Text style={styles.splitHeaderText}>
+                Split {txn.splits.length} ways · {formatCurrency(txn.splits[0]?.amount || 0)} each
+              </Text>
+            </View>
 
             {/* Splits */}
-            <View style={styles.splitsContainer}>
-              {txn.splits.map(split => (
-                <View key={split.userId} style={styles.splitRow}>
-                  <Text style={styles.splitName}>
-                    {split.userId === userId ? 'You' : split.displayName}
-                  </Text>
-                  <Text style={styles.splitAmount}>{formatCurrency(split.amount)}</Text>
-                  {split.settled ? (
-                    <Text style={styles.settled}>✓ Settled</Text>
-                  ) : split.userId !== txn.addedBy && (
-                    <TouchableOpacity
-                      style={styles.settleBtn}
-                      onPress={() => settleSplit(groupId, txn.id, split.userId)}
-                    >
-                      <Text style={styles.settleBtnText}>Settle</Text>
-                    </TouchableOpacity>
-                  )}
+            {txn.splits.map(split => (
+              <View key={split.userId} style={styles.splitRow}>
+                <View style={styles.splitLeft}>
+                  <View style={[
+                    styles.splitAvatar,
+                    { backgroundColor: `${getColorForId(split.userId)}25` },
+                  ]}>
+                    <Text style={[styles.splitAvatarText, { color: getColorForId(split.userId) }]}>
+                      {split.displayName[0].toUpperCase()}
+                    </Text>
+                  </View>
+                  <View>
+                    <Text style={styles.splitName}>
+                      {split.userId === userId ? 'You' : split.displayName}
+                    </Text>
+                    <Text style={styles.splitAmt}>{formatCurrency(split.amount)}</Text>
+                  </View>
                 </View>
-              ))}
-            </View>
+                {split.settled ? (
+                  <View style={styles.settledBadge}>
+                    <Text style={styles.settledText}>Settled</Text>
+                  </View>
+                ) : split.userId !== txn.addedBy ? (
+                  <TouchableOpacity
+                    style={styles.settleBtn}
+                    onPress={() => settleSplit(groupId, txn.id, split.userId)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.settleBtnText}>Mark Settled</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.payerBadge}>
+                    <Text style={styles.payerText}>Paid</Text>
+                  </View>
+                )}
+              </View>
+            ))}
           </View>
         ))
       )}
+
+      <View style={{ height: 20 }} />
     </ScrollView>
   );
 }
@@ -141,56 +207,204 @@ export default function GroupDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { paddingBottom: 32 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background },
+
   header: {
     padding: 24,
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 4,
   },
   groupIcon: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    width: 72,
+    height: 72,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
   },
   groupInitial: { fontSize: 32, fontWeight: '800' },
-  groupName: { fontSize: 22, fontWeight: '800', color: COLORS.text },
-  groupMeta: { fontSize: 13, color: COLORS.textSecondary, marginTop: 4 },
-  sectionTitle: {
-    fontSize: 16, fontWeight: '700', color: COLORS.text,
-    marginBottom: 10, marginTop: 16, paddingHorizontal: 16,
+  groupName: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.text,
+    marginBottom: 12,
+    letterSpacing: -0.3,
   },
-  empty: { alignItems: 'center', padding: 24 },
-  emptyText: { fontSize: 14, color: COLORS.textSecondary },
-  txnCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 12,
-    padding: 14,
-    marginHorizontal: 16,
-    marginBottom: 10,
+  metaRow: { flexDirection: 'row', gap: 8 },
+  metaChip: {
+    backgroundColor: COLORS.surfaceHigh,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  txnHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  txnDesc: { fontSize: 15, fontWeight: '600', color: COLORS.text, flex: 1 },
-  txnAmount: { fontSize: 15, fontWeight: '700', color: COLORS.danger },
-  txnDate: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2, marginBottom: 10 },
-  splitsContainer: { borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 10 },
+  metaChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+
+  sectionTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    letterSpacing: 1.5,
+    marginBottom: 10,
+    marginTop: 16,
+    paddingHorizontal: 16,
+  },
+
+  empty: { alignItems: 'center', padding: 40 },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: COLORS.surfaceHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  emptyEmoji: { fontSize: 28 },
+  emptyText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  emptySubtext: {
+    fontSize: 12,
+    color: COLORS.textLight,
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 18,
+  },
+
+  txnCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+  },
+  txnHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  txnIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  txnIconText: { fontSize: 16, fontWeight: '800' },
+  txnInfo: { flex: 1 },
+  txnDesc: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  txnDate: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  txnAmount: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.danger,
+  },
+  splitHeader: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: COLORS.surfaceHigh,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  splitHeaderText: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+    letterSpacing: 0.3,
+  },
   splitRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
   },
-  splitName: { flex: 1, fontSize: 13, color: COLORS.text },
-  splitAmount: { fontSize: 13, fontWeight: '600', color: COLORS.text, marginRight: 10 },
-  settled: { fontSize: 12, color: COLORS.success, fontWeight: '600' },
-  settleBtn: {
-    backgroundColor: `${COLORS.success}20`,
+  splitLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  splitAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  splitAvatarText: { fontSize: 13, fontWeight: '800' },
+  splitName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  splitAmt: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  settledBadge: {
+    backgroundColor: `${COLORS.success}18`,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: `${COLORS.success}30`,
   },
-  settleBtnText: { fontSize: 12, color: COLORS.success, fontWeight: '700' },
+  settledText: {
+    fontSize: 11,
+    color: COLORS.success,
+    fontWeight: '700',
+  },
+  settleBtn: {
+    backgroundColor: COLORS.surfaceHigher,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: `${COLORS.primary}40`,
+  },
+  settleBtnText: {
+    fontSize: 11,
+    color: COLORS.primary,
+    fontWeight: '700',
+  },
+  payerBadge: {
+    backgroundColor: `${COLORS.primary}15`,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: `${COLORS.primary}30`,
+  },
+  payerText: {
+    fontSize: 11,
+    color: COLORS.primary,
+    fontWeight: '700',
+  },
 });

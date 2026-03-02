@@ -15,30 +15,67 @@ export default function TrackerSettingsScreen() {
     trackerState.activeGroupIds.length;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Status */}
-      <View style={[styles.statusBanner, isListening ? styles.statusActive : styles.statusInactive]}>
-        <View style={[styles.statusDot, { backgroundColor: isListening ? COLORS.success : COLORS.textLight }]} />
-        <Text style={[styles.statusText, { color: isListening ? COLORS.success : COLORS.textSecondary }]}>
-          {isListening ? `SMS Tracking Active (${activeCount} tracker${activeCount !== 1 ? 's' : ''})` : 'SMS Tracking Inactive'}
-        </Text>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* Status card */}
+      <View style={[
+        styles.statusCard,
+        isListening ? styles.statusActive : styles.statusInactive,
+      ]}>
+        <View style={styles.statusLeft}>
+          <View style={[
+            styles.statusDot,
+            { backgroundColor: isListening ? COLORS.success : COLORS.textLight },
+          ]} />
+          <View>
+            <Text style={[
+              styles.statusTitle,
+              { color: isListening ? COLORS.success : COLORS.textSecondary },
+            ]}>
+              {isListening ? 'SMS Tracking Active' : 'SMS Tracking Inactive'}
+            </Text>
+            <Text style={styles.statusSub}>
+              {isListening
+                ? `${activeCount} tracker${activeCount !== 1 ? 's' : ''} running`
+                : 'Enable a tracker below to start'}
+            </Text>
+          </View>
+        </View>
+        {isListening && (
+          <View style={styles.activeCount}>
+            <Text style={styles.activeCountText}>{activeCount}</Text>
+          </View>
+        )}
       </View>
 
       {/* How it works */}
       <View style={styles.infoCard}>
-        <Text style={styles.infoTitle}>How It Works</Text>
-        <Text style={styles.infoText}>
-          When a tracker is enabled, the app reads incoming SMS messages for bank transactions.
-          {'\n\n'}
-          • 1 tracker active → notification with "Add" button{'\n'}
-          • 2+ trackers active → notification with "Choose Tracker" button
-          {'\n\n'}
-          Tap the notification action to instantly save the transaction.
-        </Text>
+        <Text style={styles.infoTitle}>HOW IT WORKS</Text>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoIcon}>📱</Text>
+          <Text style={styles.infoText}>App reads bank SMS when trackers are on</Text>
+        </View>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoIcon}>🔔</Text>
+          <Text style={styles.infoText}>1 tracker → "Add" button in notification</Text>
+        </View>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoIcon}>📋</Text>
+          <Text style={styles.infoText}>2+ trackers → "Choose Tracker" in-app</Text>
+        </View>
+        <View style={[styles.infoRow, styles.infoWarning]}>
+          <Text style={styles.infoIcon}>⚠️</Text>
+          <Text style={[styles.infoText, { color: COLORS.warning }]}>
+            Reimbursement + Group trackers cannot be active together
+          </Text>
+        </View>
       </View>
 
-      {/* Personal */}
-      <Text style={styles.sectionTitle}>Personal Trackers</Text>
+      {/* Personal trackers */}
+      <Text style={styles.sectionTitle}>PERSONAL TRACKERS</Text>
       <TrackerToggle
         label="Personal Expenses"
         subtitle="Daily spending"
@@ -48,16 +85,16 @@ export default function TrackerSettingsScreen() {
       />
       <TrackerToggle
         label="Reimbursement"
-        subtitle="Office/business expenses"
+        subtitle="Office / business expenses"
         isActive={trackerState.reimbursement}
         onToggle={toggleReimbursement}
         color={COLORS.reimbursementColor}
       />
 
-      {/* Groups */}
+      {/* Group trackers */}
       {groups.length > 0 && (
         <>
-          <Text style={styles.sectionTitle}>Group Trackers</Text>
+          <Text style={styles.sectionTitle}>GROUP TRACKERS</Text>
           {groups.map(group => (
             <TrackerToggle
               key={group.id}
@@ -70,15 +107,6 @@ export default function TrackerSettingsScreen() {
           ))}
         </>
       )}
-
-      {activeCount > 0 && (
-        <View style={styles.activeInfo}>
-          <Text style={styles.activeInfoText}>
-            {activeCount} tracker{activeCount !== 1 ? 's' : ''} active — {'\n'}
-            The next SMS-based bank transaction will trigger a notification.
-          </Text>
-        </View>
-      )}
     </ScrollView>
   );
 }
@@ -86,35 +114,94 @@ export default function TrackerSettingsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: 16, paddingBottom: 40 },
-  statusBanner: {
+
+  statusCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 16,
-  },
-  statusActive: { backgroundColor: `${COLORS.success}15`, borderWidth: 1, borderColor: `${COLORS.success}30` },
-  statusInactive: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
-  statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 10 },
-  statusText: { fontSize: 14, fontWeight: '600' },
-  infoCard: {
-    backgroundColor: `${COLORS.primary}10`,
-    borderRadius: 12,
+    justifyContent: 'space-between',
     padding: 16,
-    marginBottom: 20,
+    borderRadius: 16,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: `${COLORS.primary}20`,
   },
-  infoTitle: { fontSize: 14, fontWeight: '700', color: COLORS.primary, marginBottom: 8 },
-  infoText: { fontSize: 13, color: COLORS.text, lineHeight: 20 },
-  sectionTitle: { fontSize: 15, fontWeight: '700', color: COLORS.text, marginBottom: 10, marginTop: 4 },
-  activeInfo: {
-    backgroundColor: `${COLORS.success}10`,
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 12,
+  statusActive: {
+    backgroundColor: `${COLORS.success}12`,
+    borderColor: `${COLORS.success}30`,
+  },
+  statusInactive: {
+    backgroundColor: COLORS.surfaceHigh,
+    borderColor: COLORS.border,
+  },
+  statusLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  statusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  statusTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  statusSub: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  activeCount: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: `${COLORS.success}25`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activeCountText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.success,
+  },
+
+  infoCard: {
+    backgroundColor: COLORS.surfaceHigh,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
     borderWidth: 1,
-    borderColor: `${COLORS.success}20`,
+    borderColor: COLORS.border,
+    gap: 10,
   },
-  activeInfoText: { fontSize: 13, color: COLORS.success, textAlign: 'center', lineHeight: 20 },
+  infoTitle: {
+    fontSize: 10,
+    color: COLORS.textSecondary,
+    letterSpacing: 1.5,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  infoWarning: {
+    backgroundColor: `${COLORS.warning}10`,
+    padding: 10,
+    borderRadius: 10,
+    marginTop: 4,
+  },
+  infoIcon: { fontSize: 14, width: 20 },
+  infoText: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    flex: 1,
+    lineHeight: 18,
+  },
+
+  sectionTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    letterSpacing: 1.5,
+    marginBottom: 12,
+    marginTop: 4,
+  },
 });

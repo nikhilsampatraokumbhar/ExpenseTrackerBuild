@@ -1,19 +1,38 @@
+// CRED-inspired dark premium color palette
 export const COLORS = {
-  primary: '#6C63FF',
-  primaryDark: '#5A52D5',
-  secondary: '#FF6584',
-  background: '#F8F9FA',
-  surface: '#FFFFFF',
-  text: '#2D3436',
-  textSecondary: '#636E72',
-  textLight: '#B2BEC3',
-  border: '#E0E0E0',
-  success: '#00B894',
-  warning: '#FDCB6E',
-  danger: '#E17055',
-  personalColor: '#6C63FF',
-  groupColor: '#00B894',
-  reimbursementColor: '#FF6584',
+  // Backgrounds (dark, layered)
+  background: '#0A0A0F',
+  surface: '#111119',
+  surfaceHigh: '#18182A',
+  surfaceHigher: '#20203A',
+
+  // Gold accent – CRED signature
+  primary: '#C9A84C',
+  primaryLight: '#E5C46A',
+  primaryDark: '#8C7030',
+  primaryGlow: 'rgba(201,168,76,0.15)',
+
+  // Text
+  text: '#EEEEF6',
+  textSecondary: '#6A6A8E',
+  textLight: '#2E2E50',
+
+  // Borders
+  border: '#1E1E38',
+  borderLight: '#14142A',
+
+  // Status
+  success: '#3CB882',
+  warning: '#E8C06A',
+  danger: '#E0505E',
+
+  // Tracker type colors
+  personalColor: '#8A78F0',    // Soft purple
+  groupColor: '#3CB882',       // Muted green
+  reimbursementColor: '#E07888', // Salmon pink
+
+  // Semantic aliases kept for backwards compat
+  secondary: '#E07888',
 };
 
 export function formatCurrency(amount: number): string {
@@ -48,9 +67,9 @@ export function formatDate(timestamp: number): string {
 }
 
 const COLOR_PALETTE = [
-  '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
-  '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9',
-  '#F8C471', '#82E0AA',
+  '#8A78F0', '#3CB882', '#E07888', '#45A8D4', '#E8B84A',
+  '#DD70A0', '#6BCFC0', '#D4A853', '#70B0F0', '#F0886A',
+  '#88C870', '#C878E8',
 ];
 
 export function getColorForId(id: string): string {

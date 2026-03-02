@@ -2,7 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text } from 'react-native';
+import { Text, View } from 'react-native';
 
 import HomeScreen from '../screens/HomeScreen';
 import PersonalExpenseScreen from '../screens/PersonalExpenseScreen';
@@ -33,28 +33,62 @@ export type TabParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
 
+const TAB_ICONS: Record<string, { icon: string; label: string }> = {
+  Home:         { icon: '⬡', label: 'Home' },
+  Personal:     { icon: '◈', label: 'Personal' },
+  Groups:       { icon: '⬡', label: 'Groups' },
+  Reimbursement:{ icon: '◈', label: 'Reimburse' },
+};
+
+// Simple emoji-based icons since we keep it dependency-light
+const EMOJI_ICONS: Record<string, string> = {
+  Home:          '🏠',
+  Personal:      '💳',
+  Groups:        '👥',
+  Reimbursement: '🧾',
+};
+
 function TabIcon({ name, focused }: { name: string; focused: boolean }) {
-  const icons: Record<string, string> = {
-    Home: '🏠',
-    Personal: '💳',
-    Groups: '👥',
-    Reimbursement: '🧾',
-  };
   return (
-    <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.5 }}>
-      {icons[name] || '•'}
-    </Text>
+    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.35 }}>
+        {EMOJI_ICONS[name] || '•'}
+      </Text>
+    </View>
   );
 }
 
 function MainTabs() {
+  const LABELS: Record<string, string> = {
+    Home: 'Home',
+    Personal: 'Personal',
+    Groups: 'Groups',
+    Reimbursement: 'Reimburse',
+  };
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         tabBarIcon: ({ focused }) => <TabIcon name={route.name} focused={focused} />,
+        tabBarLabel: LABELS[route.name] || route.name,
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textSecondary,
-        tabBarStyle: { paddingBottom: 4 },
+        tabBarStyle: {
+          backgroundColor: COLORS.surface,
+          borderTopColor: COLORS.border,
+          borderTopWidth: 1,
+          paddingBottom: 6,
+          paddingTop: 4,
+          height: 60,
+          elevation: 0,
+          shadowOpacity: 0,
+        },
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '700',
+          letterSpacing: 0.3,
+          marginTop: 2,
+        },
         headerShown: false,
       })}
     >
@@ -68,13 +102,45 @@ function MainTabs() {
 
 export function AppNavigator() {
   return (
-    <NavigationContainer>
-      <Stack.Navigator>
+    <NavigationContainer
+      theme={{
+        dark: true,
+        colors: {
+          primary: COLORS.primary,
+          background: COLORS.background,
+          card: COLORS.surface,
+          text: COLORS.text,
+          border: COLORS.border,
+          notification: COLORS.primary,
+        },
+        fonts: {
+          regular: { fontFamily: 'System', fontWeight: '400' },
+          medium: { fontFamily: 'System', fontWeight: '500' },
+          bold: { fontFamily: 'System', fontWeight: '700' },
+          heavy: { fontFamily: 'System', fontWeight: '800' },
+        },
+      }}
+    >
+      <Stack.Navigator
+        screenOptions={{
+          headerStyle: {
+            backgroundColor: COLORS.surface,
+          },
+          headerTintColor: COLORS.text,
+          headerTitleStyle: {
+            fontWeight: '700',
+            color: COLORS.text,
+            fontSize: 16,
+          },
+          headerShadowVisible: false,
+          contentStyle: { backgroundColor: COLORS.background },
+        }}
+      >
         <Stack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
         <Stack.Screen
           name="GroupDetail"
           component={GroupDetailScreen}
-          options={{ title: 'Group', headerBackTitle: 'Back' }}
+          options={{ title: 'Group', headerBackTitle: '' }}
         />
         <Stack.Screen
           name="CreateGroup"

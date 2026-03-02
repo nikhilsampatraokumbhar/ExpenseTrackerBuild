@@ -176,8 +176,9 @@ export async function addGroupTransaction(
   all.unshift(txn);
   await saveGroupTransactions(groupId, all);
 
-  // Also save to main transactions list
-  await saveTransaction(parsed, 'group', userId, groupId);
+  // Save only user's split amount to main transactions list (not the full group amount)
+  const splitParsed = { ...parsed, amount: splitAmount };
+  await saveTransaction(splitParsed, 'group', userId, groupId);
 
   return txn;
 }

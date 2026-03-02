@@ -15,26 +15,39 @@ const TRACKER_COLORS: Record<string, string> = {
   group: COLORS.groupColor,
 };
 
+const TRACKER_LABELS: Record<string, string> = {
+  personal: 'Personal',
+  reimbursement: 'Reimburse',
+  group: 'Group',
+};
+
 export default function TransactionCard({ transaction, onPress, showBadge }: Props) {
   const color = TRACKER_COLORS[transaction.trackerType] || COLORS.primary;
   const initial = (transaction.merchant || transaction.description)[0].toUpperCase();
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
+      {/* Icon */}
       <View style={[styles.icon, { backgroundColor: `${color}20` }]}>
         <Text style={[styles.iconText, { color }]}>{initial}</Text>
       </View>
+
+      {/* Info */}
       <View style={styles.info}>
         <Text style={styles.desc} numberOfLines={1}>{transaction.description}</Text>
         <Text style={styles.date}>{formatDate(transaction.timestamp)}</Text>
       </View>
+
+      {/* Right side */}
       <View style={styles.right}>
+        <Text style={styles.amount}>-{formatCurrency(transaction.amount)}</Text>
         {showBadge && (
-          <View style={[styles.badge, { backgroundColor: `${color}20` }]}>
-            <Text style={[styles.badgeText, { color }]}>{transaction.trackerType}</Text>
+          <View style={[styles.badge, { backgroundColor: `${color}18` }]}>
+            <Text style={[styles.badgeText, { color }]}>
+              {TRACKER_LABELS[transaction.trackerType] || transaction.trackerType}
+            </Text>
           </View>
         )}
-        <Text style={styles.amount}>{formatCurrency(transaction.amount)}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -46,7 +59,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 14,
     backgroundColor: COLORS.surface,
-    borderRadius: 12,
+    borderRadius: 14,
     marginBottom: 8,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -54,22 +67,38 @@ const styles = StyleSheet.create({
   icon: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
-  iconText: { fontSize: 18, fontWeight: '700' },
+  iconText: { fontSize: 18, fontWeight: '800' },
   info: { flex: 1 },
-  desc: { fontSize: 14, fontWeight: '500', color: COLORS.text },
-  date: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
-  right: { alignItems: 'flex-end' },
-  amount: { fontSize: 15, fontWeight: '700', color: COLORS.danger },
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-    marginBottom: 4,
+  desc: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.text,
   },
-  badgeText: { fontSize: 10, fontWeight: '600', textTransform: 'capitalize' },
+  date: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 3,
+  },
+  right: { alignItems: 'flex-end', gap: 4 },
+  amount: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.danger,
+  },
+  badge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  badgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
 });

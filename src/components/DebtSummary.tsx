@@ -12,38 +12,34 @@ export default function DebtSummary({ debts, currentUserId }: Props) {
   if (debts.length === 0) {
     return (
       <View style={styles.card}>
-        <Text style={styles.settled}>✅ All settled up!</Text>
+        <View style={styles.settledRow}>
+          <View style={styles.settledDot} />
+          <Text style={styles.settled}>All settled up</Text>
+        </View>
       </View>
     );
   }
 
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>Settlements</Text>
+      <Text style={styles.title}>SETTLEMENTS</Text>
       {debts.map((debt, i) => {
-        const isCurrentUserOwing = debt.fromUserId === currentUserId;
-        const isCurrentUserOwed = debt.toUserId === currentUserId;
+        const isUserOwing = debt.fromUserId === currentUserId;
+        const isUserOwed = debt.toUserId === currentUserId;
+        const color = isUserOwing ? COLORS.danger : isUserOwed ? COLORS.success : COLORS.textSecondary;
+
         return (
           <View key={i} style={styles.row}>
-            <Text
-              style={[
-                styles.name,
-                isCurrentUserOwing && { color: COLORS.danger, fontWeight: '700' },
-              ]}
-            >
-              {debt.fromUserId === currentUserId ? 'You' : debt.fromName}
-            </Text>
-            <Text style={styles.arrow}>→</Text>
-            <Text style={styles.amount}>{formatCurrency(debt.amount)}</Text>
-            <Text style={styles.arrow}>→</Text>
-            <Text
-              style={[
-                styles.name,
-                isCurrentUserOwed && { color: COLORS.success, fontWeight: '700' },
-              ]}
-            >
-              {debt.toUserId === currentUserId ? 'You' : debt.toName}
-            </Text>
+            <View style={styles.nameWrap}>
+              <Text style={[styles.name, isUserOwing && { color: COLORS.danger }]}>
+                {debt.fromUserId === currentUserId ? 'You' : debt.fromName}
+              </Text>
+              <Text style={styles.owes}>owes</Text>
+              <Text style={[styles.name, isUserOwed && { color: COLORS.success }]}>
+                {debt.toUserId === currentUserId ? 'You' : debt.toName}
+              </Text>
+            </View>
+            <Text style={[styles.amount, { color }]}>{formatCurrency(debt.amount)}</Text>
           </View>
         );
       })}
@@ -54,20 +50,62 @@ export default function DebtSummary({ debts, currentUserId }: Props) {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: COLORS.surface,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
     marginBottom: 12,
   },
-  settled: { textAlign: 'center', fontSize: 16, fontWeight: '600', color: COLORS.success },
-  title: { fontSize: 14, fontWeight: '700', color: COLORS.text, marginBottom: 12 },
+  settledRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+  },
+  settledDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.success,
+    marginRight: 8,
+  },
+  settled: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.success,
+  },
+  title: {
+    fontSize: 10,
+    color: COLORS.textSecondary,
+    letterSpacing: 1.5,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
   },
-  name: { fontSize: 14, color: COLORS.text, flex: 1 },
-  arrow: { fontSize: 14, color: COLORS.textSecondary, marginHorizontal: 8 },
-  amount: { fontSize: 14, fontWeight: '700', color: COLORS.text },
+  nameWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 6,
+  },
+  name: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  owes: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
+  amount: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
 });

@@ -2,8 +2,8 @@ import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import { useNavigation } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { useTracker } from '../store/TrackerContext';
@@ -29,17 +29,13 @@ export default function PersonalExpenseScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
-
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
-  const thisMonth = (() => {
-    const now = new Date();
-    return transactions.filter(t => {
-      const d = new Date(t.timestamp);
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    });
-  })();
-
+  const now = new Date();
+  const thisMonth = transactions.filter(t => {
+    const d = new Date(t.timestamp);
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  });
   const totalMonthly = thisMonth.reduce((s, t) => s + t.amount, 0);
   const totalAll = transactions.reduce((s, t) => s + t.amount, 0);
 
@@ -55,9 +51,17 @@ export default function PersonalExpenseScreen() {
     <FlatList
       style={styles.container}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={COLORS.primary}
+          colors={[COLORS.primary]}
+        />
+      }
       ListHeaderComponent={() => (
         <>
+          {/* Toggle */}
           <TrackerToggle
             label="Personal Expenses"
             subtitle="Track daily spending from SMS"
@@ -65,26 +69,46 @@ export default function PersonalExpenseScreen() {
             onToggle={togglePersonal}
             color={COLORS.personalColor}
           />
-          <View style={styles.statsRow}>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{formatCurrency(totalMonthly)}</Text>
-              <Text style={styles.statLabel}>This Month</Text>
-              <Text style={styles.statCount}>{thisMonth.length} transactions</Text>
+
+          {/* Stats hero */}
+          <LinearGradient
+            colors={['#140E20', '#0A0A0F']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.heroCard}
+          >
+            <View style={[styles.heroAccent, { backgroundColor: COLORS.personalColor }]} />
+            <View style={styles.statsRow}>
+              <View style={styles.stat}>
+                <Text style={styles.statLabel}>THIS MONTH</Text>
+                <Text style={[styles.statValue, { color: COLORS.personalColor }]}>
+                  {formatCurrency(totalMonthly)}
+                </Text>
+                <Text style={styles.statCount}>{thisMonth.length} transactions</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.stat}>
+                <Text style={styles.statLabel}>ALL TIME</Text>
+                <Text style={[styles.statValue, { color: COLORS.text }]}>
+                  {formatCurrency(totalAll)}
+                </Text>
+                <Text style={styles.statCount}>{transactions.length} total</Text>
+              </View>
             </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{formatCurrency(totalAll)}</Text>
-              <Text style={styles.statLabel}>All Time</Text>
-              <Text style={styles.statCount}>{transactions.length} transactions</Text>
-            </View>
-          </View>
-          <Text style={styles.sectionTitle}>All Transactions</Text>
+          </LinearGradient>
+
+          {/* Section heading */}
+          <Text style={styles.sectionTitle}>ALL TRANSACTIONS</Text>
+
           {transactions.length === 0 && (
             <View style={styles.empty}>
-              <Text style={styles.emptyIcon}>💳</Text>
+              <View style={styles.emptyIcon}>
+                <Text style={styles.emptyEmoji}>💳</Text>
+              </View>
               <Text style={styles.emptyText}>
                 {trackerState.personal
-                  ? 'No personal expenses tracked yet.\nMake a payment to see it here.'
-                  : 'Enable the tracker above to start tracking expenses.'}
+                  ? 'No personal expenses yet'
+                  : 'Enable the tracker above to start'}
               </Text>
             </View>
           )}
@@ -105,17 +129,68 @@ export default function PersonalExpenseScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: 16, paddingBottom: 32 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  statsRow: { flexDirection: 'row', gap: 10, marginVertical: 16 },
-  statCard: {
-    flex: 1, backgroundColor: COLORS.surface, borderRadius: 12,
-    padding: 16, borderWidth: 1, borderColor: COLORS.border,
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background },
+
+  heroCard: {
+    borderRadius: 18,
+    marginVertical: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
   },
-  statValue: { fontSize: 20, fontWeight: '700', color: COLORS.text },
-  statLabel: { fontSize: 12, color: COLORS.textSecondary, marginTop: 4 },
-  statCount: { fontSize: 11, color: COLORS.textLight, marginTop: 2 },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text, marginBottom: 12 },
-  empty: { alignItems: 'center', padding: 32 },
-  emptyIcon: { fontSize: 48, marginBottom: 12 },
-  emptyText: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center' },
+  heroAccent: {
+    height: 2,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    padding: 20,
+  },
+  stat: { flex: 1, alignItems: 'center' },
+  statDivider: {
+    width: 1,
+    backgroundColor: COLORS.border,
+    marginHorizontal: 16,
+  },
+  statLabel: {
+    fontSize: 9,
+    color: COLORS.textSecondary,
+    letterSpacing: 2,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  statCount: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 4,
+  },
+  sectionTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    letterSpacing: 1.5,
+    marginBottom: 12,
+  },
+  empty: { alignItems: 'center', paddingVertical: 40 },
+  emptyIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    backgroundColor: COLORS.surfaceHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  emptyEmoji: { fontSize: 26 },
+  emptyText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+  },
 });
