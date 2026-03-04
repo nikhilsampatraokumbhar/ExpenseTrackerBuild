@@ -10,8 +10,9 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { useGroups } from '../store/GroupContext';
 import { useTracker } from '../store/TrackerContext';
 import { useAuth } from '../store/AuthContext';
-import { getGroup, addSettlement, removeSplitMember } from '../services/StorageService';
+import { getGroup, addSettlement, getSettlements, removeSplitMember } from '../services/StorageService';
 import { Group, Settlement, Debt } from '../models/types';
+import { simplifyDebts } from '../services/DebtCalculator';
 import TrackerToggle from '../components/TrackerToggle';
 import DebtSummary from '../components/DebtSummary';
 import GroupMemberCard from '../components/GroupMemberCard';
@@ -36,11 +37,14 @@ export default function GroupDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [settleModalVisible, setSettleModalVisible] = useState(false);
   const [settleTarget, setSettleTarget] = useState<SettleTarget | null>(null);
+  const [settlements, setSettlements] = useState<Settlement[]>([]);
 
   const load = useCallback(async () => {
     const g = await getGroup(groupId);
     setGroup(g);
     await loadGroupTransactions(groupId);
+    const s = await getSettlements(groupId);
+    setSettlements(s.sort((a, b) => b.timestamp - a.timestamp));
   }, [groupId, loadGroupTransactions]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
@@ -59,6 +63,7 @@ export default function GroupDetailScreen() {
   const totalSpent = activeGroupTransactions.reduce((s, t) => s + t.amount, 0);
   const groupColor = getColorForId(group.id);
   const userId = user?.id || '';
+  const simplifiedDebts = simplifyDebts(activeGroupDebts);
 
   // Calculate each member's total owed/owing across all transactions
   const getMemberTotals = (memberUserId: string): { totalOwed: number; totalOwing: number } => {
@@ -105,7 +110,7 @@ export default function GroupDetailScreen() {
           text: 'Yes, Open UPI',
           onPress: async () => {
             // Try to open UPI intent
-            const upiUrl = `upi://pay?am=${settleTarget.debt.amount}&cu=INR&tn=Settlement`;
+            const upiUrl = `upi://pay?pa=&pn=${encodeURIComponent(settleTarget.debt.toName)}&am=${settleTarget.debt.amount}&cu=INR&tn=Settlement`;
             try {
               const canOpen = await Linking.canOpenURL(upiUrl);
               if (canOpen) {
@@ -173,6 +178,11 @@ export default function GroupDetailScreen() {
     setSettleModalVisible(false);
     setSettleTarget(null);
     await load();
+
+    Alert.alert(
+      'Settlement Recorded',
+      `${formatCurrency(debt.amount)} to ${debt.toName} has been settled via ${method === 'upi' ? 'UPI' : 'Cash'}.`,
+    );
   };
 
   // Handle removing a member from a specific split
@@ -244,9 +254,10 @@ export default function GroupDetailScreen() {
           color={COLORS.groupColor}
         />
 
-        {/* Debt summary with settle buttons */}
+        {/* Settle Up section with simplified debts */}
+        <Text style={styles.sectionTitle}>SETTLE UP</Text>
         <View style={styles.debtSection}>
-          {activeGroupDebts.length === 0 ? (
+          {simplifiedDebts.length === 0 ? (
             <View style={styles.debtCard}>
               <View style={styles.settledUpRow}>
                 <View style={styles.settledUpDot} />
@@ -255,8 +266,8 @@ export default function GroupDetailScreen() {
             </View>
           ) : (
             <View style={styles.debtCard}>
-              <Text style={styles.debtTitle}>SETTLEMENTS</Text>
-              {activeGroupDebts.map((debt, i) => {
+              <Text style={styles.debtTitle}>SIMPLIFIED DEBTS</Text>
+              {simplifiedDebts.map((debt, i) => {
                 const isUserOwing = debt.fromUserId === userId;
                 const isUserOwed = debt.toUserId === userId;
                 const color = isUserOwing ? COLORS.danger : isUserOwed ? COLORS.success : COLORS.textSecondary;
@@ -415,6 +426,59 @@ export default function GroupDetailScreen() {
               ))}
             </View>
           ))
+        )}
+
+        {/* Settlement History */}
+        {settlements.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>
+              SETTLEMENT HISTORY ({settlements.length})
+            </Text>
+            {settlements.map(s => {
+              const isFrom = s.fromUserId === userId;
+              const isTo = s.toUserId === userId;
+              return (
+                <View key={s.id} style={styles.settlementCard}>
+                  <View style={styles.settlementHeader}>
+                    <View style={[
+                      styles.settlementMethodBadge,
+                      { backgroundColor: s.method === 'upi' ? `${COLORS.primaryLight}18` : `${COLORS.success}18` },
+                    ]}>
+                      <Text style={styles.settlementMethodEmoji}>
+                        {s.method === 'upi' ? '📱' : '💵'}
+                      </Text>
+                    </View>
+                    <View style={styles.settlementInfo}>
+                      <Text style={styles.settlementText}>
+                        <Text style={[styles.settlementName, isFrom && { color: COLORS.danger }]}>
+                          {isFrom ? 'You' : s.fromName}
+                        </Text>
+                        {' paid '}
+                        <Text style={[styles.settlementName, isTo && { color: COLORS.success }]}>
+                          {isTo ? 'You' : s.toName}
+                        </Text>
+                      </Text>
+                      <Text style={styles.settlementDate}>{formatDate(s.timestamp)}</Text>
+                    </View>
+                    <View style={styles.settlementRight}>
+                      <Text style={styles.settlementAmount}>{formatCurrency(s.amount)}</Text>
+                      <View style={[
+                        styles.settlementMethodTag,
+                        { borderColor: s.method === 'upi' ? `${COLORS.primary}40` : `${COLORS.success}40` },
+                      ]}>
+                        <Text style={[
+                          styles.settlementMethodText,
+                          { color: s.method === 'upi' ? COLORS.primary : COLORS.success },
+                        ]}>
+                          {s.method === 'upi' ? 'UPI' : 'Cash'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+          </>
         )}
 
         <View style={{ height: 20 }} />
@@ -827,6 +891,68 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: COLORS.danger,
     fontWeight: '700',
+  },
+
+  // Settlement history
+  settlementCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    marginHorizontal: 16,
+    marginBottom: 10,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  settlementHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  settlementMethodBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  settlementMethodEmoji: {
+    fontSize: 18,
+  },
+  settlementInfo: {
+    flex: 1,
+  },
+  settlementText: {
+    fontSize: 13,
+    color: COLORS.text,
+  },
+  settlementName: {
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  settlementDate: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 3,
+  },
+  settlementRight: {
+    alignItems: 'flex-end',
+  },
+  settlementAmount: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: COLORS.primary,
+    marginBottom: 4,
+  },
+  settlementMethodTag: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  settlementMethodText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
 
   // Settlement Modal (bottom sheet style)
