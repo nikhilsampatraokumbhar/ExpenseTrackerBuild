@@ -15,7 +15,7 @@ import {
   requestNotificationPermission,
   setupNotificationChannel,
 } from '../services/NotificationService';
-import { saveTransaction, addGroupTransaction } from '../services/FirebaseService';
+import { saveTransaction, addGroupTransaction, MOCK_USER_ID } from '../services/FirebaseService';
 import {
   setupGoogleSignIn,
   connectGmail as gmailConnect,
@@ -128,6 +128,21 @@ export function TrackerProvider({
       try {
         if (trackerType === 'group') {
           await addGroupTransaction(parsed, trackerId);
+          // If personal tracker is also on, auto-add the user's share to personal
+          if (trackerStateRef.current.personal) {
+            const group = groupsRef.current.find(g => g.id === trackerId);
+            if (group) {
+              const memberCount = group.members.length || 1;
+              const myShare = Math.round((parsed.amount / memberCount) * 100) / 100;
+              await saveTransaction(
+                { ...parsed, amount: myShare },
+                'personal',
+                undefined,
+                parsed.source ?? 'sms',
+              );
+              onPersonalExpenseRef.current?.(myShare);
+            }
+          }
         } else {
           await saveTransaction(parsed, trackerType, undefined, parsed.source ?? 'sms');
           if (trackerType === 'personal') {
@@ -356,6 +371,21 @@ export function TrackerProvider({
   ) => {
     if (trackerType === 'group') {
       await addGroupTransaction(parsed, trackerId);
+      // If personal tracker is also on, auto-add the user's share to personal
+      if (trackerStateRef.current.personal) {
+        const group = groupsRef.current.find(g => g.id === trackerId);
+        if (group) {
+          const memberCount = group.members.length || 1;
+          const myShare = Math.round((parsed.amount / memberCount) * 100) / 100;
+          await saveTransaction(
+            { ...parsed, amount: myShare },
+            'personal',
+            undefined,
+            parsed.source ?? 'sms',
+          );
+          onPersonalExpenseRef.current?.(myShare);
+        }
+      }
     } else {
       await saveTransaction(parsed, trackerType, undefined, parsed.source ?? 'sms');
       if (trackerType === 'personal') {

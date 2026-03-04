@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Group, GroupTransaction, Debt } from '../models/types';
+import { Group, GroupTransaction, Debt, Split } from '../models/types';
 import {
   subscribeToGroups,
   subscribeToGroupTransactions,
   createGroup as fbCreateGroup,
   settleSplit as fbSettleSplit,
   settleDebt as fbSettleDebt,
+  updateGroupTransaction as fbUpdateGroupTransaction,
 } from '../services/FirebaseService';
 import { calculateDebts } from '../services/DebtCalculator';
 
@@ -19,6 +20,7 @@ interface GroupContextValue {
   loadGroupTransactions: (groupId: string) => void;
   settleSplit: (groupId: string, transactionId: string, userId: string) => Promise<void>;
   settleDebt: (groupId: string, fromUserId: string, toUserId: string, amount: number) => Promise<void>;
+  updateGroupTransaction: (groupId: string, transactionId: string, splits: Split[]) => Promise<void>;
 }
 
 const GroupContext = createContext<GroupContextValue>({} as GroupContextValue);
@@ -75,6 +77,14 @@ export function GroupProvider({ children }: { children: ReactNode }) {
     await fbSettleDebt(groupId, fromUserId, toUserId, amount);
   };
 
+  const updateGroupTransaction = async (
+    groupId: string,
+    transactionId: string,
+    splits: Split[],
+  ) => {
+    await fbUpdateGroupTransaction(groupId, transactionId, splits);
+  };
+
   return (
     <GroupContext.Provider
       value={{
@@ -86,6 +96,7 @@ export function GroupProvider({ children }: { children: ReactNode }) {
         loadGroupTransactions,
         settleSplit,
         settleDebt,
+        updateGroupTransaction,
       }}>
       {children}
     </GroupContext.Provider>

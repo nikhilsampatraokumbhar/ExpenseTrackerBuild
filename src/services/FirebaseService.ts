@@ -532,6 +532,29 @@ export async function settleDebt(
   await batch.commit();
 }
 
+export async function updateGroupTransaction(
+  groupId: string,
+  transactionId: string,
+  splits: Split[],
+): Promise<void> {
+  if (DEV_MOCK_FIREBASE) {
+    await _load();
+    const txns = _store.groupTxns[groupId] ?? [];
+    const txn = txns.find(t => t.id === transactionId);
+    if (!txn) return;
+    txn.splits = splits;
+    await AsyncStorage.setItem(KEYS.groupTxnPrefix + groupId, JSON.stringify(txns));
+    _notifyGroupTxn(groupId);
+    return;
+  }
+  await firestore()
+    .collection('groups')
+    .doc(groupId)
+    .collection('transactions')
+    .doc(transactionId)
+    .update({ splits });
+}
+
 export async function settleSplit(
   groupId: string,
   transactionId: string,

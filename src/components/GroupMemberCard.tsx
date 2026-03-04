@@ -27,7 +27,7 @@ export function GroupMemberCard({
     d => d.fromUserId === currentUserId && d.toUserId === member.userId,
   );
 
-  let statusText = 'Settled up';
+  let statusText = 'None';
   let statusColor = COLORS.textSecondary;
 
   if (owesToYou) {

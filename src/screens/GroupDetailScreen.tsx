@@ -1,10 +1,16 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   FlatList,
   TouchableOpacity,
   StyleSheet,
+  Alert,
+  Modal,
+  TextInput,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -14,7 +20,7 @@ import { useAuth } from '../store/AuthContext';
 import { TrackerToggle } from '../components/TrackerToggle';
 import { DebtSummaryCard } from '../components/DebtSummary';
 import { GroupMemberCard } from '../components/GroupMemberCard';
-import { GroupTransaction, RootStackParamList } from '../models/types';
+import { GroupTransaction, Split, RootStackParamList } from '../models/types';
 import { formatCurrency, formatDate, COLORS, getColorForId } from '../utils/helpers';
 
 type RouteProps = RouteProp<RootStackParamList, 'GroupDetail'>;
@@ -24,11 +30,22 @@ export function GroupDetailScreen() {
   const route = useRoute<RouteProps>();
   const navigation = useNavigation<Nav>();
   const { groupId } = route.params;
-  const { groups, activeGroupTransactions, activeGroupDebts, loadGroupTransactions, settleSplit } = useGroups();
+  const {
+    groups,
+    activeGroupTransactions,
+    activeGroupDebts,
+    loadGroupTransactions,
+    settleSplit,
+    updateGroupTransaction,
+  } = useGroups();
   const { trackerState, toggleGroup } = useTracker();
   const { user } = useAuth();
 
   const group = groups.find(g => g.id === groupId);
+
+  // Edit modal state
+  const [editingTxn, setEditingTxn] = useState<GroupTransaction | null>(null);
+  const [editSplits, setEditSplits] = useState<Split[]>([]);
 
   useEffect(() => {
     loadGroupTransactions(groupId);
@@ -44,6 +61,74 @@ export function GroupDetailScreen() {
 
   const totalGroupSpent = activeGroupTransactions.reduce((sum, t) => sum + t.amount, 0);
   const isTracking = trackerState.activeGroupIds.includes(groupId);
+
+  // ── Settle with confirmation ──────────────────────────────────────────────
+
+  const handleSettlePress = (txn: GroupTransaction, split: Split) => {
+    Alert.alert(
+      'Confirm Settlement',
+      `Mark ${split.displayName}'s share of ${formatCurrency(split.amount)} as paid?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          onPress: () => settleSplit(groupId, txn.id, split.userId),
+        },
+      ],
+    );
+  };
+
+  // ── Edit transaction helpers ──────────────────────────────────────────────
+
+  const openEdit = (txn: GroupTransaction) => {
+    setEditingTxn(txn);
+    setEditSplits(txn.splits.map(s => ({ ...s })));
+  };
+
+  const closeEdit = () => {
+    setEditingTxn(null);
+    setEditSplits([]);
+  };
+
+  const handleRemoveMember = (index: number) => {
+    const remaining = editSplits.filter((_, i) => i !== index);
+    if (remaining.length === 0) return; // must keep at least one
+    // Redistribute evenly
+    const totalAmount = editingTxn!.amount;
+    const share = Math.round((totalAmount / remaining.length) * 100) / 100;
+    const adjusted = remaining.map((s, i) => ({
+      ...s,
+      amount: i === remaining.length - 1
+        ? Math.round((totalAmount - share * (remaining.length - 1)) * 100) / 100
+        : share,
+    }));
+    setEditSplits(adjusted);
+  };
+
+  const handleSplitAmountChange = (index: number, value: string) => {
+    const parsed = parseFloat(value);
+    const updated = editSplits.map((s, i) =>
+      i === index ? { ...s, amount: isNaN(parsed) ? 0 : parsed } : s,
+    );
+    setEditSplits(updated);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingTxn) return;
+    const total = editSplits.reduce((sum, s) => sum + s.amount, 0);
+    const diff = Math.abs(total - editingTxn.amount);
+    if (diff > 1) {
+      Alert.alert(
+        'Amount Mismatch',
+        `Split total (${formatCurrency(total)}) doesn't match expense (${formatCurrency(editingTxn.amount)}). Adjust amounts or remove members to re-split.`,
+      );
+      return;
+    }
+    await updateGroupTransaction(groupId, editingTxn.id, editSplits);
+    closeEdit();
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   const renderTransaction = ({ item }: { item: GroupTransaction }) => {
     const payer = group.members.find(m => m.userId === item.addedBy);
@@ -62,6 +147,9 @@ export function GroupDetailScreen() {
             </Text>
           </View>
           <Text style={styles.txnAmount}>{formatCurrency(item.amount)}</Text>
+          <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(item)}>
+            <Text style={styles.editBtnText}>Edit</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Splits */}
@@ -80,9 +168,7 @@ export function GroupDetailScreen() {
                 ) : (
                   <TouchableOpacity
                     style={styles.settleButton}
-                    onPress={() =>
-                      settleSplit(groupId, item.id, split.userId)
-                    }>
+                    onPress={() => handleSettlePress(item, split)}>
                     <Text style={styles.settleButtonText}>Settle</Text>
                   </TouchableOpacity>
                 )}
@@ -167,6 +253,64 @@ export function GroupDetailScreen() {
           </View>
         }
       />
+
+      {/* Edit Transaction Modal */}
+      <Modal
+        visible={!!editingTxn}
+        animationType="slide"
+        transparent
+        onRequestClose={closeEdit}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Split</Text>
+              <Text style={styles.modalSubtitle}>
+                Total: {editingTxn ? formatCurrency(editingTxn.amount) : ''}
+              </Text>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              {editSplits.map((split, idx) => (
+                <View key={idx} style={styles.editRow}>
+                  <View style={[styles.editAvatar, { backgroundColor: getColorForId(split.userId || split.displayName) }]}>
+                    <Text style={styles.editAvatarText}>
+                      {split.displayName[0].toUpperCase()}
+                    </Text>
+                  </View>
+                  <Text style={styles.editName}>{split.displayName}</Text>
+                  <TextInput
+                    style={styles.editAmountInput}
+                    keyboardType="decimal-pad"
+                    value={split.amount.toString()}
+                    onChangeText={v => handleSplitAmountChange(idx, v)}
+                  />
+                  {editSplits.length > 1 && (
+                    <TouchableOpacity
+                      style={styles.removeBtn}
+                      onPress={() => handleRemoveMember(idx)}>
+                      <Text style={styles.removeBtnText}>✕</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+              <Text style={styles.editNote}>
+                Removing a member re-splits equally among remaining members.
+              </Text>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={closeEdit}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveEdit}>
+                <Text style={styles.saveBtnText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -262,6 +406,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: COLORS.danger,
+    marginRight: 8,
+  },
+  editBtn: {
+    backgroundColor: COLORS.primary + '15',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.primary + '30',
+  },
+  editBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
   splitsContainer: {
     marginTop: 10,
@@ -338,5 +496,128 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.textLight,
     marginTop: 6,
+  },
+  // ── Edit Modal ──────────────────────────────────────────────────────────
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.text,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  modalBody: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  editRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  editAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  editAvatarText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  editName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  editAmountInput: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.text,
+    width: 80,
+    textAlign: 'right',
+    backgroundColor: COLORS.background,
+  },
+  removeBtn: {
+    marginLeft: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.danger + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  removeBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.danger,
+  },
+  editNote: {
+    fontSize: 12,
+    color: COLORS.textLight,
+    marginTop: 12,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    padding: 16,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+  },
+  saveBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+  },
+  saveBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });
