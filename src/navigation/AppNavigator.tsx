@@ -16,6 +16,8 @@ import TrackerSettingsScreen from '../screens/TrackerSettingsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import GoalsScreen from '../screens/GoalsScreen';
 import IOSSetupScreen from '../screens/iOSSetupScreen';
+import PricingScreen from '../screens/PricingScreen';
+import ReferralScreen from '../screens/ReferralScreen';
 
 import { COLORS } from '../utils/helpers';
 
@@ -27,6 +29,8 @@ export type RootStackParamList = {
   TrackerSettings: undefined;
   Reimbursement: undefined;
   IOSSetup: undefined;
+  Pricing: undefined;
+  Referral: undefined;
 };
 
 export type TabParamList = {
@@ -164,6 +168,16 @@ export function AppNavigator() {
           name="Reimbursement"
           component={ReimbursementScreen}
           options={{ title: 'Reimbursement', headerBackTitle: '' }}
+        />
+        <Stack.Screen
+          name="Pricing"
+          component={PricingScreen}
+          options={{ title: 'Premium Plans', headerBackTitle: '' }}
+        />
+        <Stack.Screen
+          name="Referral"
+          component={ReferralScreen}
+          options={{ title: 'Refer & Earn', headerBackTitle: '' }}
         />
         {Platform.OS === 'ios' && (
           <Stack.Screen

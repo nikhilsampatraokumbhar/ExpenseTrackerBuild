@@ -5,12 +5,20 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../navigation/AppNavigator';
 import { useAuth } from '../store/AuthContext';
+import { usePremium } from '../store/PremiumContext';
 import { clearAllData } from '../services/StorageService';
 import { COLORS } from '../utils/helpers';
 
+type Nav = NativeStackNavigationProp<RootStackParamList>;
+
 export default function ProfileScreen() {
+  const nav = useNavigation<Nav>();
   const { user, updateProfile } = useAuth();
+  const { isPremium, isFamily, currentPlan, subscription, referralStats } = usePremium();
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState(user?.displayName || '');
 
@@ -105,6 +113,88 @@ export default function ProfileScreen() {
             </View>
           ) : null}
         </LinearGradient>
+
+        {/* ── Premium Status ─────────────────────────────────────── */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>SUBSCRIPTION</Text>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.premiumCard, isPremium && styles.premiumCardActive]}
+          onPress={() => nav.navigate('Pricing')}
+          activeOpacity={0.8}
+        >
+          <View style={styles.premiumRow}>
+            <View style={styles.premiumIconWrap}>
+              <Text style={styles.premiumIcon}>{isPremium ? '👑' : '✨'}</Text>
+            </View>
+            <View style={styles.premiumInfo}>
+              <Text style={styles.premiumTitle}>
+                {isPremium ? `${currentPlan.name} Plan` : 'Upgrade to Premium'}
+              </Text>
+              <Text style={styles.premiumSubtitle}>
+                {isPremium
+                  ? (subscription?.isFoundingMember ? 'Founding Member' : 'Active')
+                  : 'Less than your morning chai per day'}
+              </Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </View>
+          {isPremium && subscription?.endDate && subscription.endDate > 0 && (
+            <View style={styles.premiumExpiry}>
+              <Text style={styles.premiumExpiryText}>
+                Renews {new Date(subscription.endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </Text>
+            </View>
+          )}
+          {isPremium && subscription?.endDate === -1 && (
+            <View style={styles.premiumExpiry}>
+              <Text style={[styles.premiumExpiryText, { color: COLORS.primary }]}>
+                Lifetime Access — forever yours
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* ── Refer & Earn ──────────────────────────────────────── */}
+        <TouchableOpacity
+          style={styles.referralCard}
+          onPress={() => nav.navigate('Referral')}
+          activeOpacity={0.8}
+        >
+          <View style={styles.premiumRow}>
+            <View style={[styles.premiumIconWrap, { backgroundColor: `${COLORS.warning}18` }]}>
+              <Text style={styles.premiumIcon}>🎁</Text>
+            </View>
+            <View style={styles.premiumInfo}>
+              <Text style={styles.premiumTitle}>Refer & Earn</Text>
+              <Text style={styles.premiumSubtitle}>
+                {referralStats.freeMonthsEarned > 0
+                  ? `${referralStats.freeMonthsEarned} month(s) earned — keep going!`
+                  : 'Get up to 12 months free premium'}
+              </Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* ── Family Plan Upsell ────────────────────────────────── */}
+        {isPremium && !isFamily && (
+          <TouchableOpacity
+            style={styles.familyUpsell}
+            onPress={() => nav.navigate('Pricing')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.familyUpsellIcon}>👨‍👩‍👧‍👦</Text>
+            <View style={styles.familyUpsellContent}>
+              <Text style={styles.familyUpsellTitle}>Add your family</Text>
+              <Text style={styles.familyUpsellText}>
+                ₹37/person/month — less than a samosa per day
+              </Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Privacy & Data Section */}
         <View style={styles.sectionHeader}>
@@ -272,6 +362,97 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textSecondary,
     letterSpacing: 0.5,
+  },
+
+  /* ── Premium Card ───────────────────────────────────────────── */
+  premiumCard: {
+    backgroundColor: COLORS.surfaceHigh,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  premiumCardActive: {
+    borderColor: `${COLORS.primary}40`,
+  },
+  premiumRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  premiumIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: `${COLORS.primary}18`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: `${COLORS.primary}30`,
+  },
+  premiumIcon: { fontSize: 22 },
+  premiumInfo: { flex: 1 },
+  premiumTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 2,
+  },
+  premiumSubtitle: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
+  chevron: {
+    fontSize: 22,
+    color: COLORS.textSecondary,
+    marginLeft: 8,
+  },
+  premiumExpiry: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  premiumExpiryText: {
+    fontSize: 12,
+    color: COLORS.success,
+    fontWeight: '600',
+  },
+
+  /* ── Referral Card ─────────────────────────────────────────── */
+  referralCard: {
+    backgroundColor: COLORS.surfaceHigh,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  /* ── Family Upsell ─────────────────────────────────────────── */
+  familyUpsell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: `${COLORS.primary}10`,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: `${COLORS.primary}20`,
+  },
+  familyUpsellIcon: { fontSize: 28, marginRight: 12 },
+  familyUpsellContent: { flex: 1 },
+  familyUpsellTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 2,
+  },
+  familyUpsellText: {
+    fontSize: 12,
+    color: COLORS.primaryLight,
+    fontStyle: 'italic',
   },
 
   /* ── Section Headers ─────────────────────────────────────────── */
