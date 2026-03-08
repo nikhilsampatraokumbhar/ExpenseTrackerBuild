@@ -13,15 +13,20 @@ import { COLORS } from './src/utils/helpers';
 registerBackgroundHandler();
 
 function AppContent() {
-  const { user, loading } = useAuth();
+  const { user, loading, isAuthenticated } = useAuth();
   const { groups } = useGroups();
 
-  if (loading || !user) {
+  if (loading) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator size="large" color={COLORS.primary} />
       </View>
     );
+  }
+
+  // If not authenticated, AppNavigator will show LoginScreen
+  if (!isAuthenticated || !user) {
+    return <AppNavigator />;
   }
 
   return (

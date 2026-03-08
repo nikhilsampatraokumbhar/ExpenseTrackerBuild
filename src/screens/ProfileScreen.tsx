@@ -17,7 +17,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ProfileScreen() {
   const nav = useNavigation<Nav>();
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, signOut } = useAuth();
   const { isPremium, isFamily, currentPlan, subscription, referralStats } = usePremium();
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState(user?.displayName || '');
@@ -109,7 +109,10 @@ export default function ProfileScreen() {
           {user?.phone ? (
             <View style={styles.phoneRow}>
               <Text style={styles.phoneIcon}>📱</Text>
-              <Text style={styles.phoneText}>{user.phone}</Text>
+              <Text style={styles.phoneText}>+91 {user.phone}</Text>
+              <View style={styles.verifiedBadge}>
+                <Text style={styles.verifiedText}>Verified</Text>
+              </View>
             </View>
           ) : null}
         </LinearGradient>
@@ -237,9 +240,30 @@ export default function ProfileScreen() {
           <View style={styles.aboutDivider} />
           <View style={styles.aboutRow}>
             <Text style={styles.aboutLabel}>Storage</Text>
-            <Text style={styles.aboutValue}>All data stored locally on your device</Text>
+            <Text style={styles.aboutValue}>Personal data local, groups synced via cloud</Text>
           </View>
         </View>
+
+        {/* Sign Out */}
+        <TouchableOpacity
+          style={styles.signOutBtn}
+          onPress={() => {
+            Alert.alert(
+              'Sign Out',
+              'Are you sure you want to sign out? Your local data will remain on this device.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Sign Out',
+                  onPress: async () => { await signOut(); },
+                },
+              ],
+            );
+          }}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.signOutBtnText}>Sign Out</Text>
+        </TouchableOpacity>
 
         {/* Clear Data */}
         <TouchableOpacity style={styles.clearBtn} onPress={handleClearData}>
@@ -361,6 +385,21 @@ const styles = StyleSheet.create({
   phoneText: {
     fontSize: 14,
     color: COLORS.textSecondary,
+    letterSpacing: 0.5,
+  },
+  verifiedBadge: {
+    backgroundColor: `${COLORS.success}18`,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: `${COLORS.success}30`,
+    marginLeft: 8,
+  },
+  verifiedText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.success,
     letterSpacing: 0.5,
   },
 
@@ -577,6 +616,22 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: COLORS.danger,
+    letterSpacing: 0.3,
+  },
+
+  signOutBtn: {
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 16,
+    backgroundColor: COLORS.surfaceHigh,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  signOutBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
     letterSpacing: 0.3,
   },
 });
