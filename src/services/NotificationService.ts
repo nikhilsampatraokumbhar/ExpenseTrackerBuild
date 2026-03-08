@@ -7,7 +7,7 @@ import { ParsedTransaction, ActiveTracker, TrackerType } from '../models/types';
 import { formatCurrency } from '../utils/helpers';
 import { saveTransaction, addGroupTransaction, getOrCreateUser } from './StorageService';
 
-const CHANNEL_ID = 'expense-tracker-transactions';
+const CHANNEL_ID = 'trackk-transactions';
 
 let addToTrackerCallback: ((parsed: ParsedTransaction, tracker: ActiveTracker) => void) | null = null;
 let chooseTrackerCallback: ((parsed: ParsedTransaction) => void) | null = null;
@@ -30,12 +30,23 @@ export function registerNotificationCallbacks(
   chooseTrackerCallback = chooseCallback;
 }
 
+/**
+ * Generate a deterministic notification ID from transaction data.
+ * If the same transaction triggers multiple times, it updates the
+ * existing notification instead of creating duplicates.
+ */
+function makeNotificationId(parsed: ParsedTransaction): string {
+  const roundedTs = Math.floor(parsed.timestamp / 5000) * 5000;
+  return `txn_${parsed.amount}_${roundedTs}`;
+}
+
 export async function showTransactionNotification(
   parsed: ParsedTransaction,
   activeTrackers: ActiveTracker[],
 ): Promise<void> {
   pendingTransaction = parsed;
 
+  const notificationId = makeNotificationId(parsed);
   const title = `💰 ${formatCurrency(parsed.amount)} debited`;
   const body = parsed.merchant
     ? `Payment at ${parsed.merchant}`
@@ -46,6 +57,7 @@ export async function showTransactionNotification(
   if (activeTrackers.length === 1) {
     const tracker = activeTrackers[0];
     await notifee.displayNotification({
+      id: notificationId,
       title,
       body,
       android: {
@@ -76,6 +88,7 @@ export async function showTransactionNotification(
     });
   } else {
     await notifee.displayNotification({
+      id: notificationId,
       title,
       body,
       android: {
@@ -152,7 +165,7 @@ export function registerBackgroundHandler(): void {
       const actionId = detail.pressAction?.id;
 
       if (actionId === 'add_to_tracker' && detail.notification?.data) {
-        const data = detail.notification.data;
+        const data = detail.notification.data as Record<string, string>;
         const parsed: ParsedTransaction = {
           amount: Number(data.amount),
           type: 'debit',

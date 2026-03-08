@@ -15,6 +15,7 @@ export default function CreateGroupScreen() {
   const [groupName, setGroupName] = useState('');
   const [members, setMembers] = useState([{ name: '', phone: '' }]);
   const [loading, setLoading] = useState(false);
+  const [isTrip, setIsTrip] = useState(false);
 
   const addMember = () => setMembers(prev => [...prev, { name: '', phone: '' }]);
 
@@ -38,12 +39,22 @@ export default function CreateGroupScreen() {
       Alert.alert('Missing Members', 'Please add at least one member');
       return;
     }
+    // Check that all members have phone numbers (required for syncing)
+    const missingPhone = validMembers.find(m => !m.phone.trim() || m.phone.replace(/\D/g, '').length < 10);
+    if (missingPhone) {
+      Alert.alert(
+        'Phone Number Required',
+        `Please enter a valid 10-digit phone number for ${missingPhone.name.trim()}. Phone numbers are used to sync group data between members.`,
+      );
+      return;
+    }
     setLoading(true);
     try {
       await createGroup(
         groupName.trim(),
         validMembers.map(m => ({ displayName: m.name.trim(), phone: m.phone.trim() })),
         user?.id || 'local_user',
+        isTrip,
       );
       nav.goBack();
     } catch {
@@ -73,6 +84,37 @@ export default function CreateGroupScreen() {
         />
       </View>
 
+      {/* Trip Toggle */}
+      <View style={styles.section}>
+        <TouchableOpacity
+          style={styles.tripToggleRow}
+          onPress={() => setIsTrip(prev => !prev)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.tripToggleInfo}>
+            <Text style={styles.tripToggleLabel}>This is a trip</Text>
+            <Text style={styles.tripToggleSubtitle}>
+              Get a reminder to turn off tracking after 2–3 weeks
+            </Text>
+          </View>
+          <View style={[
+            styles.tripSwitch,
+            isTrip && styles.tripSwitchActive,
+          ]}>
+            <View style={[
+              styles.tripSwitchThumb,
+              isTrip && styles.tripSwitchThumbActive,
+            ]} />
+            <Text style={[
+              styles.tripSwitchText,
+              isTrip && styles.tripSwitchTextActive,
+            ]}>
+              {isTrip ? 'ON' : 'OFF'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
       {/* Members */}
       <View style={styles.section}>
         <Text style={styles.label}>MEMBERS</Text>
@@ -96,7 +138,7 @@ export default function CreateGroupScreen() {
               />
               <TextInput
                 style={styles.input}
-                placeholder="Phone (optional)"
+                placeholder="Phone number (required for sync)"
                 value={m.phone}
                 onChangeText={v => updateMember(i, 'phone', v)}
                 keyboardType="phone-pad"
@@ -181,6 +223,71 @@ const styles = StyleSheet.create({
     padding: 14,
     fontSize: 15,
     color: COLORS.text,
+  },
+
+  /* ── Trip Toggle ──────────────────────────────────────────────── */
+  tripToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.surfaceHigh,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  tripToggleInfo: {
+    flex: 1,
+    marginRight: 16,
+  },
+  tripToggleLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 4,
+  },
+  tripToggleSubtitle: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    lineHeight: 17,
+  },
+  tripSwitch: {
+    width: 56,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: COLORS.surfaceHigher,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 3,
+  },
+  tripSwitchActive: {
+    backgroundColor: `${COLORS.primary}25`,
+    borderColor: `${COLORS.primary}50`,
+  },
+  tripSwitchThumb: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: COLORS.textSecondary,
+  },
+  tripSwitchThumbActive: {
+    backgroundColor: COLORS.primary,
+    transform: [{ translateX: 26 }],
+  },
+  tripSwitchText: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: COLORS.textSecondary,
+    letterSpacing: 0.5,
+    position: 'absolute',
+    right: 7,
+  },
+  tripSwitchTextActive: {
+    color: COLORS.primary,
+    left: 6,
+    right: undefined,
   },
 
   memberRow: {
