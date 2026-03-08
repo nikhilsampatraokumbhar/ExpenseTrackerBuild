@@ -11,6 +11,32 @@ let lastSmsTimestamp = 0;
 let activeCallback: SmsCallback | null = null;
 let hasNativeListener = false;
 
+/**
+ * Deduplication: track recently seen transactions by fingerprint.
+ * Prevents duplicate notifications when both native listener and
+ * polling/catch-up detect the same SMS.
+ */
+const recentTransactions = new Set<string>();
+const DEDUP_WINDOW_MS = 30000; // 30 seconds
+
+function makeFingerprint(amount: number, timestamp: number, merchant?: string): string {
+  // Round timestamp to nearest 5 seconds to handle minor timing differences
+  const roundedTs = Math.floor(timestamp / 5000) * 5000;
+  return `${amount}_${roundedTs}_${merchant || ''}`;
+}
+
+function isDuplicate(parsed: ParsedTransaction): boolean {
+  const fp = makeFingerprint(parsed.amount, parsed.timestamp, parsed.merchant);
+  if (recentTransactions.has(fp)) {
+    console.log('[Trackk] Duplicate transaction detected, skipping:', fp);
+    return true;
+  }
+  recentTransactions.add(fp);
+  // Auto-clean after dedup window
+  setTimeout(() => recentTransactions.delete(fp), DEDUP_WINDOW_MS);
+  return false;
+}
+
 export async function requestSmsPermission(): Promise<boolean> {
   if (Platform.OS !== 'android') return false;
 
@@ -49,7 +75,9 @@ function handleIncomingSms(message: { body: string; originatingAddress: string }
   console.log('[Trackk] Parsed:', parsed ? `Rs.${parsed.amount}` : 'null');
   if (parsed) {
     lastSmsTimestamp = parsed.timestamp;
-    activeCallback(parsed);
+    if (!isDuplicate(parsed)) {
+      activeCallback(parsed);
+    }
   }
 }
 
@@ -162,7 +190,7 @@ export async function readRecentSms(
           if (msgDate > lastSmsTimestamp) {
             if (isBankSender(sms.address)) {
               const parsed = parseTransactionSms(sms.body, sms.address);
-              if (parsed && callback) {
+              if (parsed && callback && !isDuplicate(parsed)) {
                 callback(parsed);
               }
             }

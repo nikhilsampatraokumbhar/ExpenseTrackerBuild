@@ -30,12 +30,23 @@ export function registerNotificationCallbacks(
   chooseTrackerCallback = chooseCallback;
 }
 
+/**
+ * Generate a deterministic notification ID from transaction data.
+ * If the same transaction triggers multiple times, it updates the
+ * existing notification instead of creating duplicates.
+ */
+function makeNotificationId(parsed: ParsedTransaction): string {
+  const roundedTs = Math.floor(parsed.timestamp / 5000) * 5000;
+  return `txn_${parsed.amount}_${roundedTs}`;
+}
+
 export async function showTransactionNotification(
   parsed: ParsedTransaction,
   activeTrackers: ActiveTracker[],
 ): Promise<void> {
   pendingTransaction = parsed;
 
+  const notificationId = makeNotificationId(parsed);
   const title = `💰 ${formatCurrency(parsed.amount)} debited`;
   const body = parsed.merchant
     ? `Payment at ${parsed.merchant}`
@@ -46,6 +57,7 @@ export async function showTransactionNotification(
   if (activeTrackers.length === 1) {
     const tracker = activeTrackers[0];
     await notifee.displayNotification({
+      id: notificationId,
       title,
       body,
       android: {
@@ -76,6 +88,7 @@ export async function showTransactionNotification(
     });
   } else {
     await notifee.displayNotification({
+      id: notificationId,
       title,
       body,
       android: {
