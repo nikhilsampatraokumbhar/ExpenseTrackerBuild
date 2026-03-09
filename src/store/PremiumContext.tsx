@@ -283,10 +283,30 @@ export function PremiumProvider({ children, userId }: { children: ReactNode; use
     };
   }, [subscription]);
 
-  // ── Subscribe to plan (Razorpay placeholder) ──────────────────────────
+  // ── Subscribe to plan ──────────────────────────────────────────────────
   const subscribeToPlan = useCallback(async (planId: PlanId): Promise<{ success: boolean; orderId?: string }> => {
-    // In production, this triggers Razorpay checkout
-    // For now, simulate success
+    const { initiatePayment, verifyPaymentServer } = require('../services/PaymentService');
+
+    // Step 1: Initiate payment (Razorpay checkout or simulated)
+    const payResult = await initiatePayment(planId, '', '', '');
+    if (!payResult.success) {
+      return { success: false };
+    }
+
+    // Step 2: Verify payment server-side (activates subscription in Firestore)
+    if (payResult.signature && payResult.signature !== 'simulated') {
+      const verifyResult = await verifyPaymentServer(
+        payResult.paymentId, payResult.orderId, payResult.signature, planId
+      );
+      if (verifyResult.success && verifyResult.subscription) {
+        // Server activated — cache locally
+        await AsyncStorage.setItem(KEYS.SUBSCRIPTION, JSON.stringify(verifyResult.subscription));
+        setSubscription(verifyResult.subscription);
+        return { success: true, orderId: payResult.orderId };
+      }
+    }
+
+    // Dev/simulated mode — activate locally
     const now = Date.now();
     const plan = PLANS[planId];
     let endDate: number;
@@ -311,7 +331,7 @@ export function PremiumProvider({ children, userId }: { children: ReactNode; use
     await AsyncStorage.setItem(KEYS.SUBSCRIPTION, JSON.stringify(newSub));
     setSubscription(newSub);
 
-    return { success: true, orderId: `order_${generateId()}` };
+    return { success: true, orderId: payResult.orderId };
   }, [subscription]);
 
   // ── Cancel ────────────────────────────────────────────────────────────
