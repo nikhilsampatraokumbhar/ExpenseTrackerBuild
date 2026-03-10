@@ -1,7 +1,7 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  ActivityIndicator, RefreshControl,
+  ActivityIndicator, RefreshControl, Alert, Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -12,6 +12,13 @@ import { useTracker } from '../store/TrackerContext';
 import { usePremium } from '../store/PremiumContext';
 import TrackerToggle from '../components/TrackerToggle';
 import { COLORS, getColorForId } from '../utils/helpers';
+import {
+  RetentionStatus,
+  checkGroupRetentionStatus,
+  dismissRetentionBanner,
+  markSoftAlertShown,
+  acceptDeletion,
+} from '../services/DataRetentionService';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -21,8 +28,58 @@ export default function GroupListScreen() {
   const { trackerState, toggleGroup } = useTracker();
   const { isPremium } = usePremium();
   const [refreshing, setRefreshing] = useState(false);
+  const [retentionStatuses, setRetentionStatuses] = useState<RetentionStatus[]>([]);
+  const [softAlertStatus, setSoftAlertStatus] = useState<RetentionStatus | null>(null);
 
   useFocusEffect(useCallback(() => { refreshGroups(); }, [refreshGroups]));
+
+  // Check retention status for all groups (free users only)
+  useEffect(() => {
+    if (isPremium || groups.length === 0) {
+      setRetentionStatuses([]);
+      return;
+    }
+    (async () => {
+      const statuses: RetentionStatus[] = [];
+      for (const g of groups) {
+        const status = await checkGroupRetentionStatus(g.id);
+        if (status) statuses.push(status);
+      }
+      setRetentionStatuses(statuses);
+
+      // Find the first group needing a soft alert
+      const alertNeeded = statuses.find(s => s.showSoftAlert);
+      if (alertNeeded) setSoftAlertStatus(alertNeeded);
+    })();
+  }, [groups, isPremium]);
+
+  const handleDismissBanner = async (groupId: string) => {
+    await dismissRetentionBanner(groupId);
+    setRetentionStatuses(prev => prev.map(s =>
+      s.groupId === groupId ? { ...s, showBanner: false } : s
+    ));
+  };
+
+  const handleSoftAlertResponse = async (action: 'upgrade' | 'fine' | 'later') => {
+    if (!softAlertStatus) return;
+    if (action === 'upgrade') {
+      await markSoftAlertShown(softAlertStatus.groupId);
+      setSoftAlertStatus(null);
+      nav.navigate('Pricing');
+    } else if (action === 'fine') {
+      await markSoftAlertShown(softAlertStatus.groupId);
+      await acceptDeletion(softAlertStatus.groupId);
+      setSoftAlertStatus(null);
+    } else {
+      // "Remind me later" — just close, don't mark as shown
+      setSoftAlertStatus(null);
+    }
+  };
+
+  const getGroupRetentionBanner = (groupId: string) => {
+    const status = retentionStatuses.find(s => s.groupId === groupId && s.showBanner);
+    return status || null;
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -142,6 +199,36 @@ export default function GroupListScreen() {
                 <Text style={styles.chevron}>›</Text>
               </TouchableOpacity>
 
+              {/* Retention warning banner (Day 75+) */}
+              {(() => {
+                const retention = getGroupRetentionBanner(item.id);
+                if (!retention) return null;
+                return (
+                  <View style={styles.retentionBanner}>
+                    <View style={styles.retentionBannerContent}>
+                      <Text style={styles.retentionBannerText}>
+                        {retention.expiringCount} expense{retention.expiringCount > 1 ? 's' : ''} older than 75 days.
+                        Free accounts keep 90 days of history.
+                      </Text>
+                      <View style={styles.retentionBannerActions}>
+                        <TouchableOpacity
+                          style={styles.retentionUpgradeBtn}
+                          onPress={() => nav.navigate('Pricing')}
+                        >
+                          <Text style={styles.retentionUpgradeText}>Keep with Premium</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.retentionDismissBtn}
+                          onPress={() => handleDismissBanner(item.id)}
+                        >
+                          <Text style={styles.retentionDismissText}>Dismiss</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })()}
+
               {/* Tracker toggle row */}
               <View style={styles.toggleRow}>
                 <TrackerToggle
@@ -166,6 +253,54 @@ export default function GroupListScreen() {
         <Text style={styles.fabIcon}>+</Text>
         <Text style={styles.fabText}>New Group</Text>
       </TouchableOpacity>
+
+      {/* Soft Alert Modal (Day 85 — shown once per batch) */}
+      <Modal
+        visible={!!softAlertStatus}
+        transparent
+        animationType="fade"
+        onRequestClose={() => handleSoftAlertResponse('later')}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalIconWrap}>
+              <Text style={styles.modalIcon}>🗓️</Text>
+            </View>
+            <Text style={styles.modalTitle}>Data cleanup ahead</Text>
+            <Text style={styles.modalDesc}>
+              Group expenses older than 90 days will be removed
+              {softAlertStatus?.daysUntilPurge
+                ? ` in ${softAlertStatus.daysUntilPurge} day${softAlertStatus.daysUntilPurge > 1 ? 's' : ''}`
+                : ' soon'}
+              . Upgrade to keep everything, or we'll clean up the oldest entries automatically.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.modalUpgradeBtn}
+              onPress={() => handleSoftAlertResponse('upgrade')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalUpgradeBtnText}>Upgrade to Premium</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalSecondaryBtn}
+              onPress={() => handleSoftAlertResponse('fine')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.modalSecondaryBtnText}>That's fine, clean up</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalTertiaryBtn}
+              onPress={() => handleSoftAlertResponse('later')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.modalTertiaryBtnText}>Remind me later</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -327,6 +462,131 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 4,
     paddingTop: 4,
+  },
+
+  /* ── Retention Banner (per group card) ───────────────────── */
+  retentionBanner: {
+    backgroundColor: `${COLORS.warning}10`,
+    borderTopWidth: 1,
+    borderTopColor: `${COLORS.warning}20`,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  retentionBannerContent: {
+    gap: 8,
+  },
+  retentionBannerText: {
+    fontSize: 11,
+    color: COLORS.warning,
+    lineHeight: 16,
+  },
+  retentionBannerActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  retentionUpgradeBtn: {
+    backgroundColor: `${COLORS.primary}20`,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: `${COLORS.primary}30`,
+  },
+  retentionUpgradeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  retentionDismissBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  retentionDismissText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+
+  /* ── Soft Alert Modal ──────────────────────────────────── */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    padding: 28,
+    width: '100%',
+    maxWidth: 340,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  modalIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: `${COLORS.warning}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: `${COLORS.warning}25`,
+  },
+  modalIcon: {
+    fontSize: 28,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.text,
+    marginBottom: 8,
+  },
+  modalDesc: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  modalUpgradeBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  modalUpgradeBtnText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0A0A0F',
+  },
+  modalSecondaryBtn: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    width: '100%',
+    alignItems: 'center',
+    backgroundColor: COLORS.surfaceHigh,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 6,
+  },
+  modalSecondaryBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  modalTertiaryBtn: {
+    paddingVertical: 10,
+  },
+  modalTertiaryBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
   },
 
   fab: {
