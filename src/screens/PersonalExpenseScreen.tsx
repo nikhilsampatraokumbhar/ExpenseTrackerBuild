@@ -165,6 +165,24 @@ export default function PersonalExpenseScreen() {
             </View>
           </LinearGradient>
 
+          {/* Savings Goals */}
+          <TouchableOpacity
+            style={styles.goalsCard}
+            onPress={() => nav.navigate('Goals')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.goalsRow}>
+              <View style={styles.goalsIconWrap}>
+                <Text style={styles.goalsIcon}>🎯</Text>
+              </View>
+              <View style={styles.goalsInfo}>
+                <Text style={styles.goalsTitle}>Savings Goals</Text>
+                <Text style={styles.goalsSub}>Set targets and track daily budgets</Text>
+              </View>
+              <Text style={styles.goalsChevron}>›</Text>
+            </View>
+          </TouchableOpacity>
+
           {/* Section heading */}
           <Text style={styles.sectionTitle}>ALL TRANSACTIONS</Text>
 
@@ -235,6 +253,50 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.textSecondary,
     marginTop: 4,
+  },
+  goalsCard: {
+    backgroundColor: COLORS.surfaceHigh,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: `${COLORS.success}30`,
+  },
+  goalsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  goalsIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: `${COLORS.success}18`,
+    borderWidth: 1,
+    borderColor: `${COLORS.success}30`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  goalsIcon: {
+    fontSize: 18,
+  },
+  goalsInfo: {
+    flex: 1,
+  },
+  goalsTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  goalsSub: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  goalsChevron: {
+    fontSize: 22,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
   },
   sectionTitle: {
     fontSize: 10,

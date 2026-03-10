@@ -250,24 +250,6 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Savings Goals */}
-        <TouchableOpacity
-          style={styles.referralCard}
-          onPress={() => nav.navigate('Goals')}
-          activeOpacity={0.8}
-        >
-          <View style={styles.premiumRow}>
-            <View style={[styles.premiumIconWrap, { backgroundColor: `${COLORS.success}18`, borderColor: `${COLORS.success}30` }]}>
-              <Text style={styles.premiumIcon}>🎯</Text>
-            </View>
-            <View style={styles.premiumInfo}>
-              <Text style={styles.premiumTitle}>Savings Goals</Text>
-              <Text style={styles.premiumSubtitle}>Set targets and track daily budgets</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </View>
-        </TouchableOpacity>
-
         {/* ── Connect Email ─────────────────────────────────────── */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>EMAIL TRANSACTION DETECTION</Text>
