@@ -178,23 +178,34 @@ export default function PersonalExpenseScreen() {
             </View>
           </LinearGradient>
 
-          {/* Savings Goals */}
-          <TouchableOpacity
-            style={styles.goalsCard}
-            onPress={() => nav.navigate('Goals')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.goalsRow}>
-              <View style={styles.goalsIconWrap}>
-                <Text style={styles.goalsIcon}>🎯</Text>
+          {/* Savings Goals & Reimbursement */}
+          <View style={styles.quickAccessRow}>
+            <TouchableOpacity
+              style={styles.quickAccessCard}
+              onPress={() => nav.navigate('Goals')}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.quickAccessIconWrap, { backgroundColor: `${COLORS.success}18`, borderColor: `${COLORS.success}30` }]}>
+                <Text style={styles.quickAccessIcon}>🎯</Text>
               </View>
-              <View style={styles.goalsInfo}>
-                <Text style={styles.goalsTitle}>Savings Goals</Text>
-                <Text style={styles.goalsSub}>Set targets and track daily budgets</Text>
+              <Text style={styles.quickAccessTitle}>Savings Goals</Text>
+              <Text style={styles.quickAccessSub}>Set targets & daily budgets</Text>
+              <Text style={styles.quickAccessChevron}>›</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.quickAccessCard}
+              onPress={() => nav.navigate('Reimbursement')}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.quickAccessIconWrap, { backgroundColor: `${COLORS.reimbursementColor}18`, borderColor: `${COLORS.reimbursementColor}30` }]}>
+                <Text style={styles.quickAccessIcon}>🧾</Text>
               </View>
-              <Text style={styles.goalsChevron}>›</Text>
-            </View>
-          </TouchableOpacity>
+              <Text style={styles.quickAccessTitle}>Reimbursement</Text>
+              <Text style={styles.quickAccessSub}>Track office expenses</Text>
+              <Text style={styles.quickAccessChevron}>›</Text>
+            </TouchableOpacity>
+          </View>
 
           {/* Section heading */}
           <Text style={styles.sectionTitle}>ALL TRANSACTIONS</Text>
@@ -267,49 +278,49 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: 4,
   },
-  goalsCard: {
+  quickAccessRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  quickAccessCard: {
+    flex: 1,
     backgroundColor: COLORS.surfaceHigh,
     borderRadius: 14,
     padding: 14,
-    marginBottom: 16,
     borderWidth: 1,
-    borderColor: `${COLORS.success}30`,
-  },
-  goalsRow: {
-    flexDirection: 'row',
+    borderColor: COLORS.border,
     alignItems: 'center',
   },
-  goalsIconWrap: {
+  quickAccessIconWrap: {
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: `${COLORS.success}18`,
     borderWidth: 1,
-    borderColor: `${COLORS.success}30`,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginBottom: 10,
   },
-  goalsIcon: {
+  quickAccessIcon: {
     fontSize: 18,
   },
-  goalsInfo: {
-    flex: 1,
-  },
-  goalsTitle: {
-    fontSize: 14,
+  quickAccessTitle: {
+    fontSize: 13,
     fontWeight: '700',
     color: COLORS.text,
+    marginBottom: 2,
   },
-  goalsSub: {
-    fontSize: 11,
+  quickAccessSub: {
+    fontSize: 10,
     color: COLORS.textSecondary,
-    marginTop: 2,
+    textAlign: 'center',
+    lineHeight: 14,
   },
-  goalsChevron: {
-    fontSize: 22,
+  quickAccessChevron: {
+    fontSize: 18,
     color: COLORS.textSecondary,
     fontWeight: '600',
+    marginTop: 6,
   },
   sectionTitle: {
     fontSize: 10,

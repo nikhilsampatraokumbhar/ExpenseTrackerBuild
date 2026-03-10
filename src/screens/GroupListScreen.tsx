@@ -3,11 +3,13 @@ import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   ActivityIndicator, RefreshControl,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { useGroups } from '../store/GroupContext';
 import { useTracker } from '../store/TrackerContext';
+import { usePremium } from '../store/PremiumContext';
 import TrackerToggle from '../components/TrackerToggle';
 import { COLORS, getColorForId } from '../utils/helpers';
 
@@ -17,6 +19,7 @@ export default function GroupListScreen() {
   const nav = useNavigation<Nav>();
   const { groups, loading, refreshGroups } = useGroups();
   const { trackerState, toggleGroup } = useTracker();
+  const { isPremium } = usePremium();
   const [refreshing, setRefreshing] = useState(false);
 
   useFocusEffect(useCallback(() => { refreshGroups(); }, [refreshGroups]));
@@ -49,7 +52,37 @@ export default function GroupListScreen() {
         }
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          <Text style={styles.sectionTitle}>YOUR GROUPS</Text>
+          <>
+            {!isPremium && (
+              <TouchableOpacity
+                style={styles.premiumBanner}
+                onPress={() => nav.navigate('Pricing')}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={['#1C1708', '#12100A']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.premiumBannerGradient}
+                >
+                  <View style={styles.premiumBannerGoldLine} />
+                  <View style={styles.premiumBannerContent}>
+                    <View style={styles.premiumBannerLeft}>
+                      <View style={styles.premiumBadge}>
+                        <Text style={styles.premiumBadgeText}>PRO</Text>
+                      </View>
+                      <View>
+                        <Text style={styles.premiumBannerTitle}>Unlock Unlimited Groups</Text>
+                        <Text style={styles.premiumBannerSub}>Free plan: up to 3 groups</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.premiumBannerChevron}>›</Text>
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
+            <Text style={styles.sectionTitle}>YOUR GROUPS</Text>
+          </>
         }
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -141,6 +174,61 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: 16, paddingBottom: 100 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background },
+
+  /* ── Premium Banner ──────────────────────────────────────── */
+  premiumBanner: {
+    marginBottom: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  premiumBannerGradient: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: `${COLORS.primary}30`,
+    overflow: 'hidden',
+  },
+  premiumBannerGoldLine: {
+    height: 2,
+    backgroundColor: COLORS.primary,
+  },
+  premiumBannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  premiumBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  premiumBadge: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  premiumBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#0A0A0F',
+    letterSpacing: 1,
+  },
+  premiumBannerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.primary,
+    marginBottom: 2,
+  },
+  premiumBannerSub: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+  },
+  premiumBannerChevron: {
+    fontSize: 22,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
 
   sectionTitle: {
     fontSize: 10,

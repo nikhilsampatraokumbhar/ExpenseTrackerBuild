@@ -68,11 +68,25 @@ const EMOJI_ICONS: Record<string, string> = {
 };
 
 function TabIcon({ name, focused }: { name: string; focused: boolean }) {
+  const isGroups = name === 'Groups';
   return (
     <View style={{ alignItems: 'center', justifyContent: 'center' }}>
       <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.35 }}>
         {EMOJI_ICONS[name] || '•'}
       </Text>
+      {isGroups && (
+        <View style={{
+          position: 'absolute',
+          top: -2,
+          right: -14,
+          backgroundColor: COLORS.primary,
+          borderRadius: 4,
+          paddingHorizontal: 3,
+          paddingVertical: 1,
+        }}>
+          <Text style={{ fontSize: 6, fontWeight: '800', color: '#0A0A0F', letterSpacing: 0.3 }}>PRO</Text>
+        </View>
+      )}
     </View>
   );
 }

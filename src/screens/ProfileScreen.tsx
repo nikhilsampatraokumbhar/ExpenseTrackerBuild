@@ -257,9 +257,7 @@ export default function ProfileScreen() {
 
         <View style={styles.emailCard}>
           <Text style={styles.emailCardDesc}>
-            {Platform.OS === 'ios'
-              ? 'Connect your email to automatically detect bank transactions from email alerts.'
-              : 'Connect your email for reimbursement tracking and foreign trip expenses (when SMS is unavailable).'}
+            We only connect your email if you allow us to — and only for detecting transaction alerts. Your data stays private, is never shared, and you can disconnect and delete it anytime.
           </Text>
 
           {(['gmail', 'outlook', 'yahoo'] as EmailProvider[]).map((provider) => {
