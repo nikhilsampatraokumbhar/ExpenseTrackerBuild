@@ -28,8 +28,8 @@
     "react-native": "0.83.2",
     "react-native-get-sms-android": "^2.1.0",
     "react-native-permissions": "^5.4.4",
-    "react-native-safe-area-context": "^5.7.0",
-    "react-native-screens": "^4.24.0",
+    "react-native-safe-area-context": "~5.4.0",
+    "react-native-screens": "~4.23.0",
     "@react-native-firebase/functions": "^21.6.1"
   },
   "private": true,
