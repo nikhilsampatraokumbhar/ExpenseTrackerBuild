@@ -1,4 +1,4 @@
-package com.expensetrackerbuild
+package com.trackk.app
 
 import android.content.BroadcastReceiver
 import android.content.Context

@@ -1,4 +1,4 @@
-package com.expensetrackerbuild
+package com.trackk.app
 
 import android.os.Build
 import android.os.Bundle

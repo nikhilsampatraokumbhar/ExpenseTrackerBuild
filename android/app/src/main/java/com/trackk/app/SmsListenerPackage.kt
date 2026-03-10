@@ -1,4 +1,4 @@
-package com.expensetrackerbuild
+package com.trackk.app
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule
