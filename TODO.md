@@ -1,6 +1,6 @@
 # Trackk — Project TODO
 
-> Last updated: 2026-03-09
+> Last updated: 2026-03-10
 
 ---
 
@@ -39,6 +39,16 @@
 - [x] `redeemPromoCode` — Server-side promo code validation
 - [x] Firestore security rules (membership checks, server-only writes for subscriptions)
 
+### Email-Based Transaction Detection (Cloud Functions)
+- [x] `connectEmail` — OAuth2 exchange for Gmail/Outlook/Yahoo + webhook setup
+- [x] `disconnectEmail` — Remove email connection and cleanup
+- [x] `gmailWebhook` — Pub/Sub handler for real-time Gmail push notifications
+- [x] `outlookWebhook` — HTTP handler for Microsoft Graph webhooks
+- [x] `renewEmailWatches` — Scheduled daily renewal of Gmail/Outlook subscriptions
+- [x] `pollYahooEmails` — Scheduled polling every 5 minutes for Yahoo Mail
+- [x] Email transaction parser (35+ Indian bank/UPI email senders)
+- [x] FCM notification sender for email-detected transactions (Android + iOS)
+
 ### Quality & Performance
 - [x] Security audit fixes (removed key_secret from client, __DEV__ flag for dev promos)
 - [x] Performance optimizations (useMemo on all context providers, React.memo on TransactionCard)
@@ -49,8 +59,13 @@
 
 ### Build & CI
 - [x] EAS Build configuration
-- [x] GitHub Actions APK build workflow
+- [x] GitHub Actions APK build workflow (release APK)
 - [x] Firebase project configuration (.firebaserc, firebase.json)
+- [x] Fixed `babel-preset-expo` version to `~55.0.0` (was ~13.0.0, caused codegen failures)
+- [x] Fixed `react-native-screens` to `~4.23.0` and `react-native-safe-area-context` to `~5.6.2` (Expo 55 compat)
+- [x] Fixed `settings.gradle` project name (ExpenseTrackerBuild → Trackk)
+- [x] Added `googleServicesFile` to `app.json` for prebuild
+- [x] Copied `google-services.json` to project root
 
 ---
 
@@ -68,6 +83,24 @@
 - [ ] Deploy Firestore rules: `firebase deploy --only firestore:rules`
 - [ ] Flip `USE_PRODUCTION_PAYMENT` to `true` in `src/services/PaymentService.ts`
 - [ ] End-to-end test: payment → verification → subscription activation
+
+### Email OAuth Setup (Priority 1)
+- [ ] Create Google Cloud OAuth 2.0 credentials (Gmail API)
+- [ ] Register Azure AD app (Microsoft Graph API for Outlook)
+- [ ] Register Yahoo Developer app (Yahoo Mail API)
+- [ ] Set email OAuth secrets:
+  ```
+  firebase functions:secrets:set GMAIL_CLIENT_ID
+  firebase functions:secrets:set GMAIL_CLIENT_SECRET
+  firebase functions:secrets:set MICROSOFT_CLIENT_ID
+  firebase functions:secrets:set MICROSOFT_CLIENT_SECRET
+  firebase functions:secrets:set YAHOO_CLIENT_ID
+  firebase functions:secrets:set YAHOO_CLIENT_SECRET
+  ```
+- [ ] Create Pub/Sub topic for Gmail push notifications
+- [ ] Add "Connect Email" UI to Android app
+- [ ] Register FCM device tokens on client side
+- [ ] End-to-end test: email → parse → FCM notification → add to tracker
 
 ### Promo Codes (Priority 1)
 - [ ] Add promo codes to Firestore `promoCodes` collection for server-side validation
@@ -97,7 +130,8 @@
 - [ ] Multi-currency support
 - [ ] Dark/light theme toggle
 - [ ] Widgets (daily spend, budget remaining)
-- [ ] iOS release
+- [ ] iOS app (email-only detection, no SMS — Cloud Functions already built)
+- [ ] Inbound email parsing for non-Gmail/Outlook/Yahoo providers (SendGrid/Mailgun)
 
 ### Technical Debt
 - [ ] Migrate from AsyncStorage to MMKV for faster local storage
@@ -114,3 +148,6 @@
 - **Payment security**: Razorpay key_secret never on client; all payment verification server-side via Cloud Functions
 - **Dev vs Prod**: `USE_PRODUCTION_PAYMENT` flag in PaymentService.ts; dev promo codes behind `__DEV__`
 - **State management**: Context API + useMemo optimization (no Redux needed at current scale)
+- **Dual detection**: Android uses SMS (primary) + email parsing; iOS uses email parsing only
+- **Email providers**: Gmail (Pub/Sub push), Outlook (Graph API webhook), Yahoo (5-min polling)
+- **Email use cases**: iOS users, reimbursement/corporate card tracking, foreign trips (temp SIM = no bank SMS)

@@ -27,7 +27,7 @@ Or just drag the project folder to GitHub Desktop and push.
 ### Step 3: Download Your APK
 - When the build is green, click on it
 - Scroll down to **Artifacts**
-- Download **Trackk-Debug-APK**
+- Download **Trackk-Release-APK**
 - Extract the zip → you have your `.apk` file!
 
 ### Step 4: Install on Your Android Phone
@@ -90,7 +90,22 @@ Grant both for full functionality.
 
 ---
 
+## Method 3: Local Build (Fastest — For Developers)
+
+```bash
+git clone https://github.com/nikhilsampatraokumbhar/Trackk.git
+cd Trackk
+npm install
+cd android && ./gradlew assembleRelease
+```
+
+APK output: `android/app/build/outputs/apk/release/app-release.apk`
+
+---
+
 ## Technical Details
 
 - **Low battery usage** — event-driven SMS detection, no background polling
+- **Dual detection** — SMS (Android primary) + email parsing (both platforms)
+- **Email providers** — Gmail (real-time push), Outlook (webhook), Yahoo (polling)
 - Banks supported: HDFC, SBI, ICICI, Axis, Kotak, PNB, Paytm, PhonePe, GPay, 20+ more
