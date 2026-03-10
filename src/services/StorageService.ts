@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   User, Transaction, Group, GroupTransaction, Split,
   TrackerType, ParsedTransaction, SavingsGoal, DailySpend, Settlement,
-  SavingsJarEntry,
+  SavingsJarEntry, FinanceItem,
 } from '../models/types';
 import { generateId } from '../utils/helpers';
 import { buildDescription } from './TransactionParser';
@@ -16,6 +16,7 @@ const KEYS = {
   DAILY_SPENDS: '@et_daily_spends',
   SAVINGS_JAR: '@et_savings_jar',
   SETTLEMENTS: (groupId: string) => `@et_settlements_${groupId}`,
+  SHARED_FINANCES: '@et_shared_finances',
 };
 
 // ─── User ────────────────────────────────────────────────────────────────────
@@ -294,6 +295,42 @@ export async function deleteGoal(goalId: string): Promise<void> {
   await AsyncStorage.setItem(KEYS.GOALS, JSON.stringify(all.filter(g => g.id !== goalId)));
 }
 
+// ─── Shared Monthly Finances (reused across all goals) ──────────────────────
+
+export interface SharedFinances {
+  salary: number;
+  emis: number;
+  expenses: number;     // rent + bills
+  maintenance: number;
+  customFinances: FinanceItem[];
+}
+
+export async function getSharedFinances(): Promise<SharedFinances | null> {
+  const raw = await AsyncStorage.getItem(KEYS.SHARED_FINANCES);
+  return raw ? JSON.parse(raw) : null;
+}
+
+export async function saveSharedFinances(finances: SharedFinances): Promise<void> {
+  await AsyncStorage.setItem(KEYS.SHARED_FINANCES, JSON.stringify(finances));
+
+  // Also update all existing goals with the new finances
+  const goals = await getGoals();
+  for (const goal of goals) {
+    goal.salary = finances.salary;
+    goal.emis = finances.emis;
+    goal.expenses = finances.expenses;
+    goal.maintenance = finances.maintenance;
+    goal.customFinances = finances.customFinances;
+
+    // Recalculate budgets
+    const totalFixed = finances.emis + finances.expenses + finances.maintenance
+      + finances.customFinances.reduce((s, f) => s + f.amount, 0);
+    const monthlySavings = finances.salary - totalFixed;
+    goal.dailyBudget = Math.max((monthlySavings - goal.monthlyBudget) / 30, 0);
+  }
+  await AsyncStorage.setItem(KEYS.GOALS, JSON.stringify(goals));
+}
+
 // ─── Daily Spend Tracking (auto-computed from transactions) ──────────────────
 
 export async function getDailySpends(): Promise<DailySpend[]> {
@@ -305,41 +342,46 @@ async function saveDailySpends(spends: DailySpend[]): Promise<void> {
   await AsyncStorage.setItem(KEYS.DAILY_SPENDS, JSON.stringify(spends));
 }
 
-/** Compute today's spend directly from personal + group-split transactions */
-export async function computeTodaySpendFromTransactions(): Promise<number> {
+/** Compute today's spend directly from personal + group-split transactions
+ * @param excludeGroup If true, excludes group-split transactions (for goal budget when groupAffectsGoal is off) */
+export async function computeTodaySpendFromTransactions(excludeGroup = false): Promise<number> {
   const today = new Date().toISOString().slice(0, 10);
   const all = await getAllTransactions();
   return all
     .filter(t => {
       if (t.trackerType === 'reimbursement') return false; // reimbursements don't count
+      if (excludeGroup && t.trackerType === 'group') return false;
       const txDate = new Date(t.timestamp).toISOString().slice(0, 10);
       return txDate === today;
     })
     .reduce((s, t) => s + t.amount, 0);
 }
 
-/** Compute month's spend directly from personal + group-split transactions */
-export async function computeMonthSpendFromTransactions(): Promise<number> {
+/** Compute month's spend directly from personal + group-split transactions
+ * @param excludeGroup If true, excludes group-split transactions */
+export async function computeMonthSpendFromTransactions(excludeGroup = false): Promise<number> {
   const now = new Date();
   const all = await getAllTransactions();
   return all
     .filter(t => {
       if (t.trackerType === 'reimbursement') return false;
+      if (excludeGroup && t.trackerType === 'group') return false;
       const d = new Date(t.timestamp);
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     })
     .reduce((s, t) => s + t.amount, 0);
 }
 
-/** Get or create today's DailySpend entry with carryover from previous day */
-export async function getOrCreateTodaySpend(dailyBudget: number): Promise<DailySpend> {
+/** Get or create today's DailySpend entry with carryover from previous day
+ * @param excludeGroup If true, excludes group-split transactions from spend */
+export async function getOrCreateTodaySpend(dailyBudget: number, excludeGroup = false): Promise<DailySpend> {
   const today = new Date().toISOString().slice(0, 10);
   const all = await getDailySpends();
   const existing = all.find(d => d.date === today);
 
   if (existing) {
     // Update spent from real transactions
-    const spent = await computeTodaySpendFromTransactions();
+    const spent = await computeTodaySpendFromTransactions(excludeGroup);
     existing.spent = spent;
     existing.leftover = existing.effectiveBudget - spent;
     await saveDailySpends(all);
@@ -362,7 +404,7 @@ export async function getOrCreateTodaySpend(dailyBudget: number): Promise<DailyS
     // If 'save', carryover stays 0 (jar was already credited)
   }
 
-  const spent = await computeTodaySpendFromTransactions();
+  const spent = await computeTodaySpendFromTransactions(excludeGroup);
   const effectiveBudget = dailyBudget + carryover;
 
   const entry: DailySpend = {
@@ -493,7 +535,7 @@ export async function emptyJar(goalId: string): Promise<number> {
 export async function clearAllData(): Promise<void> {
   const groups = await getGroups();
   const keys = [
-    KEYS.USER, KEYS.TRANSACTIONS, KEYS.GROUPS, KEYS.GOALS, KEYS.DAILY_SPENDS, KEYS.SAVINGS_JAR,
+    KEYS.USER, KEYS.TRANSACTIONS, KEYS.GROUPS, KEYS.GOALS, KEYS.DAILY_SPENDS, KEYS.SAVINGS_JAR, KEYS.SHARED_FINANCES,
     ...groups.map(g => KEYS.GROUP_TRANSACTIONS(g.id)),
     ...groups.map(g => KEYS.SETTLEMENTS(g.id)),
     // Also clear cache, tracker state, and premium data

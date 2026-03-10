@@ -15,7 +15,9 @@ import {
   computeTodaySpendFromTransactions, computeMonthSpendFromTransactions,
   getOrCreateTodaySpend, getYesterdayLeftover,
   saveLeftoverToJar, carryForwardLeftover, emptyJar,
+  getSharedFinances, saveSharedFinances, SharedFinances,
 } from '../services/StorageService';
+import { FinanceItem } from '../models/types';
 import { usePremium } from '../store/PremiumContext';
 import { useTracker } from '../store/TrackerContext';
 import { COLORS, formatCurrency, generateId } from '../utils/helpers';
@@ -73,7 +75,7 @@ const FREE_GOAL_LIMIT = 1;
 export default function GoalsScreen() {
   const nav = useNavigation<Nav>();
   const { isPremium } = usePremium();
-  const { trackerState, togglePersonal } = useTracker();
+  const { trackerState, togglePersonal, toggleGroupAffectsGoal } = useTracker();
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [todaySpend, setTodaySpend] = useState(0);
@@ -85,17 +87,16 @@ export default function GoalsScreen() {
   // Form fields
   const [goalName, setGoalName] = useState('');
   const [targetAmount, setTargetAmount] = useState('');
-  const [targetMonth, setTargetMonth] = useState('');
-  const [targetYear, setTargetYear] = useState('');
+  const [targetMonths, setTargetMonths] = useState('');
   const [salary, setSalary] = useState('');
   const [emis, setEmis] = useState('');
   const [expenses, setExpenses] = useState('');
   const [maintenance, setMaintenance] = useState('');
+  const [customFinances, setCustomFinances] = useState<FinanceItem[]>([]);
 
   // Refs for input focus chaining
   const targetAmountRef = useRef<TextInput>(null);
-  const targetMonthRef = useRef<TextInput>(null);
-  const targetYearRef = useRef<TextInput>(null);
+  const targetMonthsRef = useRef<TextInput>(null);
   const salaryRef = useRef<TextInput>(null);
   const emisRef = useRef<TextInput>(null);
   const expensesRef = useRef<TextInput>(null);
@@ -104,18 +105,25 @@ export default function GoalsScreen() {
   /* ── Data Loading ─────────────────────────────────────────────────── */
 
   const loadData = useCallback(async () => {
+    const excludeGroup = !trackerState.groupAffectsGoal;
     const [g, ts, ms] = await Promise.all([
       getGoals(),
-      computeTodaySpendFromTransactions(),
-      computeMonthSpendFromTransactions(),
+      computeTodaySpendFromTransactions(excludeGroup),
+      computeMonthSpendFromTransactions(excludeGroup),
     ]);
     setGoals(g);
     setTodaySpend(ts);
     setMonthSpend(ms);
 
     // Load daily spend entry with carryover info
+    // For multi-goal: use combined daily budget (shared finances - sum of all set-asides)
     if (g.length > 0) {
-      const dailyEntry = await getOrCreateTodaySpend(g[0].dailyBudget);
+      const ref = g[0]; // all goals share same salary/expenses
+      const customTotal = (ref.customFinances || []).reduce((s, f) => s + f.amount, 0);
+      const monthlySavings = ref.salary - ref.emis - ref.expenses - ref.maintenance - customTotal;
+      const totalSetAside = g.reduce((s, goal) => s + goal.monthlyBudget, 0);
+      const combinedDailyBudget = Math.max((monthlySavings - totalSetAside) / 30, 0);
+      const dailyEntry = await getOrCreateTodaySpend(combinedDailyBudget, excludeGroup);
       setTodayDailySpend(dailyEntry);
 
       // Check for yesterday's pending leftover
@@ -128,7 +136,7 @@ export default function GoalsScreen() {
         setShowLeftoverSheet(false);
       }
     }
-  }, []);
+  }, [trackerState.groupAffectsGoal]);
 
   useFocusEffect(useCallback(() => {
     loadData();
@@ -139,31 +147,44 @@ export default function GoalsScreen() {
   const resetForm = () => {
     setGoalName('');
     setTargetAmount('');
-    setTargetMonth('');
-    setTargetYear('');
+    setTargetMonths('');
     setSalary('');
     setEmis('');
     setExpenses('');
     setMaintenance('');
+    setCustomFinances([]);
     setShowForm(false);
   };
+
+  /** Load shared finances to prefill form when creating a new goal */
+  const prefillFinances = useCallback(async () => {
+    const shared = await getSharedFinances();
+    if (shared) {
+      setSalary(shared.salary > 0 ? String(shared.salary) : '');
+      setEmis(shared.emis > 0 ? String(shared.emis) : '');
+      setExpenses(shared.expenses > 0 ? String(shared.expenses) : '');
+      setMaintenance(shared.maintenance > 0 ? String(shared.maintenance) : '');
+      setCustomFinances(shared.customFinances || []);
+    }
+  }, []);
 
   const computeBudgets = () => {
     const salaryVal = parseFloat(salary) || 0;
     const emisVal = parseFloat(emis) || 0;
     const expensesVal = parseFloat(expenses) || 0;
     const maintenanceVal = parseFloat(maintenance) || 0;
-    const monthlyBudget = salaryVal - emisVal - expensesVal - maintenanceVal;
+    const customTotal = customFinances.reduce((s, f) => s + f.amount, 0);
+    const totalFixed = emisVal + expensesVal + maintenanceVal + customTotal;
+    const monthlyBudget = salaryVal - totalFixed;
     const dailyBudget = monthlyBudget / 30;
-    return { salaryVal, emisVal, expensesVal, maintenanceVal, monthlyBudget, dailyBudget };
+    return { salaryVal, emisVal, expensesVal, maintenanceVal, customTotal, totalFixed, monthlyBudget, dailyBudget };
   };
 
   const handleCreateGoal = async () => {
     const name = goalName.trim();
     const target = parseFloat(targetAmount);
-    const month = parseInt(targetMonth, 10);
-    const year = parseInt(targetYear, 10);
-    const { salaryVal, emisVal, expensesVal, maintenanceVal } = computeBudgets();
+    const months = parseInt(targetMonths, 10);
+    const { salaryVal, emisVal, expensesVal, maintenanceVal, customTotal } = computeBudgets();
 
     if (!name) {
       Alert.alert('Missing', 'Please enter a goal name.');
@@ -173,8 +194,8 @@ export default function GoalsScreen() {
       Alert.alert('Missing', 'Please enter a valid target amount.');
       return;
     }
-    if (!month || month < 1 || month > 12 || !year || year < 2024) {
-      Alert.alert('Missing', 'Please enter a valid target month (1-12) and year.');
+    if (!months || months < 1 || months > 36) {
+      Alert.alert('Missing', 'Please enter target months (1-36).');
       return;
     }
     if (!salaryVal || salaryVal <= 0) {
@@ -182,18 +203,25 @@ export default function GoalsScreen() {
       return;
     }
 
-    const targetDate = new Date(year, month - 1, 1).getTime();
     const now = new Date();
+    const targetDate = new Date(now.getFullYear(), now.getMonth() + months, 1).getTime();
 
-    if (targetDate <= now.getTime()) {
-      Alert.alert('Invalid Date', 'Target date must be in the future.');
-      return;
-    }
+    // Save shared finances for future goals
+    await saveSharedFinances({
+      salary: salaryVal,
+      emis: emisVal,
+      expenses: expensesVal,
+      maintenance: maintenanceVal,
+      customFinances,
+    });
 
-    const monthsRemaining = monthsBetween(now, new Date(targetDate));
-    const monthlySavings = salaryVal - emisVal - expensesVal - maintenanceVal;
-    const monthlyBudgetForGoal = target / monthsRemaining;
-    const dailyBudget = (monthlySavings - monthlyBudgetForGoal) / 30;
+    // For multi-goal: total monthly set-aside = sum of existing goals' monthlyBudget + this new goal
+    const existingGoals = await getGoals();
+    const existingMonthlySetAside = existingGoals.reduce((s, g) => s + g.monthlyBudget, 0);
+    const monthlySavings = salaryVal - emisVal - expensesVal - maintenanceVal - customTotal;
+    const monthlyBudgetForGoal = target / months;
+    const totalSetAside = existingMonthlySetAside + monthlyBudgetForGoal;
+    const dailyBudget = (monthlySavings - totalSetAside) / 30;
 
     if (dailyBudget < 0) {
       Alert.alert(
@@ -204,7 +232,7 @@ export default function GoalsScreen() {
           {
             text: 'Save Anyway',
             onPress: async () => {
-              await doSaveGoal(name, target, targetDate, salaryVal, emisVal, expensesVal, maintenanceVal, dailyBudget, monthlyBudgetForGoal);
+              await doSaveGoal(name, target, targetDate, months, salaryVal, emisVal, expensesVal, maintenanceVal, dailyBudget, monthlyBudgetForGoal);
             },
           },
         ],
@@ -212,11 +240,11 @@ export default function GoalsScreen() {
       return;
     }
 
-    await doSaveGoal(name, target, targetDate, salaryVal, emisVal, expensesVal, maintenanceVal, dailyBudget, monthlyBudgetForGoal);
+    await doSaveGoal(name, target, targetDate, months, salaryVal, emisVal, expensesVal, maintenanceVal, dailyBudget, monthlyBudgetForGoal);
   };
 
   const doSaveGoal = async (
-    name: string, target: number, targetDate: number,
+    name: string, target: number, targetDate: number, tMonths: number,
     salaryVal: number, emisVal: number, expensesVal: number,
     maintenanceVal: number, dailyBudget: number, monthlyBudget: number,
   ) => {
@@ -225,10 +253,12 @@ export default function GoalsScreen() {
       name,
       targetAmount: target,
       targetDate,
+      targetMonths: tMonths,
       salary: salaryVal,
       emis: emisVal,
       expenses: expensesVal,
       maintenance: maintenanceVal,
+      customFinances,
       dailyBudget: Math.max(dailyBudget, 0),
       monthlyBudget,
       streak: 0,
@@ -335,28 +365,25 @@ export default function GoalsScreen() {
   /* ── Live Preview (computed from form state) ──────────────────────── */
 
   const getLivePreview = () => {
-    const { salaryVal, emisVal, expensesVal, maintenanceVal, monthlyBudget, dailyBudget } = computeBudgets();
+    const { salaryVal, monthlyBudget, dailyBudget } = computeBudgets();
     const target = parseFloat(targetAmount) || 0;
-    const month = parseInt(targetMonth, 10);
-    const year = parseInt(targetYear, 10);
+    const months = parseInt(targetMonths, 10);
 
     let monthlySetAside = 0;
     let adjustedDaily = dailyBudget;
 
-    if (target > 0 && month >= 1 && month <= 12 && year >= 2024) {
-      const targetDate = new Date(year, month - 1, 1);
-      const now = new Date();
-      if (targetDate.getTime() > now.getTime()) {
-        const months = monthsBetween(now, targetDate);
-        monthlySetAside = target / months;
-        adjustedDaily = (monthlyBudget - monthlySetAside) / 30;
-      }
+    if (target > 0 && months >= 1 && months <= 36) {
+      // For multi-goal: account for existing goals' set-aside
+      const existingSetAside = goals.reduce((s, g) => s + g.monthlyBudget, 0);
+      monthlySetAside = target / months;
+      adjustedDaily = (monthlyBudget - existingSetAside - monthlySetAside) / 30;
     }
 
     return {
       monthlyBudget,
       dailyBudget: adjustedDaily,
       monthlySetAside,
+      existingSetAside: goals.reduce((s, g) => s + g.monthlyBudget, 0),
       hasSalary: salaryVal > 0,
     };
   };
@@ -425,7 +452,7 @@ export default function GoalsScreen() {
         </Text>
         <TouchableOpacity
           style={styles.createBtnPrimary}
-          onPress={() => setShowForm(true)}
+          onPress={() => { prefillFinances(); setShowForm(true); }}
           activeOpacity={0.8}
         >
           <LinearGradient
@@ -501,43 +528,23 @@ export default function GoalsScreen() {
                 keyboardType="numeric"
                 selectionColor={COLORS.primary}
                 returnKeyType="next"
-                onSubmitEditing={() => targetMonthRef.current?.focus()}
+                onSubmitEditing={() => targetMonthsRef.current?.focus()}
               />
 
-              <View style={styles.rowFields}>
-                <View style={styles.halfField}>
-                  <Text style={styles.fieldLabel}>TARGET MONTH (1-12)</Text>
-                  <TextInput
-                    ref={targetMonthRef}
-                    style={styles.input}
-                    value={targetMonth}
-                    onChangeText={setTargetMonth}
-                    placeholder="6"
-                    placeholderTextColor={COLORS.textLight}
-                    keyboardType="numeric"
-                    selectionColor={COLORS.primary}
-                    maxLength={2}
-                    returnKeyType="next"
-                    onSubmitEditing={() => targetYearRef.current?.focus()}
-                  />
-                </View>
-                <View style={styles.halfField}>
-                  <Text style={styles.fieldLabel}>TARGET YEAR</Text>
-                  <TextInput
-                    ref={targetYearRef}
-                    style={styles.input}
-                    value={targetYear}
-                    onChangeText={setTargetYear}
-                    placeholder="2026"
-                    placeholderTextColor={COLORS.textLight}
-                    keyboardType="numeric"
-                    selectionColor={COLORS.primary}
-                    maxLength={4}
-                    returnKeyType="next"
-                    onSubmitEditing={() => salaryRef.current?.focus()}
-                  />
-                </View>
-              </View>
+              <Text style={styles.fieldLabel}>TARGET MONTHS (1-36)</Text>
+              <TextInput
+                ref={targetMonthsRef}
+                style={styles.input}
+                value={targetMonths}
+                onChangeText={setTargetMonths}
+                placeholder="12"
+                placeholderTextColor={COLORS.textLight}
+                keyboardType="numeric"
+                selectionColor={COLORS.primary}
+                maxLength={2}
+                returnKeyType="next"
+                onSubmitEditing={() => salaryRef.current?.focus()}
+              />
             </View>
 
             {/* Finances Section */}
@@ -564,7 +571,7 @@ export default function GoalsScreen() {
                 style={styles.input}
                 value={emis}
                 onChangeText={setEmis}
-                placeholder="15000"
+                placeholder="0"
                 placeholderTextColor={COLORS.textLight}
                 keyboardType="numeric"
                 selectionColor={COLORS.primary}
@@ -578,7 +585,7 @@ export default function GoalsScreen() {
                 style={styles.input}
                 value={expenses}
                 onChangeText={setExpenses}
-                placeholder="20000"
+                placeholder="0"
                 placeholderTextColor={COLORS.textLight}
                 keyboardType="numeric"
                 selectionColor={COLORS.primary}
@@ -592,12 +599,56 @@ export default function GoalsScreen() {
                 style={styles.input}
                 value={maintenance}
                 onChangeText={setMaintenance}
-                placeholder="3000"
+                placeholder="0"
                 placeholderTextColor={COLORS.textLight}
                 keyboardType="numeric"
                 selectionColor={COLORS.primary}
                 returnKeyType="done"
               />
+
+              {/* Custom finance fields */}
+              {customFinances.map((item, idx) => (
+                <View key={idx} style={styles.customFinanceRow}>
+                  <TextInput
+                    style={[styles.input, { flex: 1, marginBottom: 0, marginRight: 8 }]}
+                    value={item.label}
+                    onChangeText={(text) => {
+                      const updated = [...customFinances];
+                      updated[idx] = { ...updated[idx], label: text };
+                      setCustomFinances(updated);
+                    }}
+                    placeholder="Label"
+                    placeholderTextColor={COLORS.textLight}
+                    selectionColor={COLORS.primary}
+                  />
+                  <TextInput
+                    style={[styles.input, { width: 100, marginBottom: 0, marginRight: 8 }]}
+                    value={item.amount > 0 ? String(item.amount) : ''}
+                    onChangeText={(text) => {
+                      const updated = [...customFinances];
+                      updated[idx] = { ...updated[idx], amount: parseFloat(text) || 0 };
+                      setCustomFinances(updated);
+                    }}
+                    placeholder="0"
+                    placeholderTextColor={COLORS.textLight}
+                    keyboardType="numeric"
+                    selectionColor={COLORS.primary}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setCustomFinances(customFinances.filter((_, i) => i !== idx))}
+                    style={styles.removeCustomBtn}
+                  >
+                    <Text style={styles.removeCustomBtnText}>{'\u2715'}</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity
+                style={styles.addCustomBtn}
+                onPress={() => setCustomFinances([...customFinances, { label: '', amount: 0 }])}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.addCustomBtnText}>+ Add Expense</Text>
+              </TouchableOpacity>
             </View>
 
             {/* Live Budget Preview */}
@@ -633,9 +684,17 @@ export default function GoalsScreen() {
                   </View>
                   {preview.monthlySetAside > 0 && (
                     <View style={styles.previewSetAside}>
-                      <Text style={styles.previewSetAsideLabel}>Monthly set-aside for goal</Text>
+                      <Text style={styles.previewSetAsideLabel}>Monthly set-aside for this goal</Text>
                       <Text style={styles.previewSetAsideValue}>
                         {formatCurrency(preview.monthlySetAside)}
+                      </Text>
+                    </View>
+                  )}
+                  {preview.existingSetAside > 0 && (
+                    <View style={styles.previewSetAside}>
+                      <Text style={styles.previewSetAsideLabel}>Existing goals set-aside</Text>
+                      <Text style={[styles.previewSetAsideValue, { color: COLORS.textSecondary }]}>
+                        {formatCurrency(preview.existingSetAside)}
                       </Text>
                     </View>
                   )}
@@ -804,7 +863,8 @@ export default function GoalsScreen() {
     const estimatedSavings = getEstimatedSavings(goal);
     const savingsProgress = Math.min(estimatedSavings / goal.targetAmount, 1);
     const days = daysRemaining(goal.targetDate);
-    const monthlySavings = goal.salary - goal.emis - goal.expenses - goal.maintenance;
+    const customTotal = (goal.customFinances || []).reduce((s, f) => s + f.amount, 0);
+    const monthlySavings = goal.salary - goal.emis - goal.expenses - goal.maintenance - customTotal;
     const carryover = todayDailySpend?.carryover || 0;
 
     return (
@@ -950,6 +1010,25 @@ export default function GoalsScreen() {
           <View style={styles.autoSyncBadge}>
             <Text style={styles.autoSyncBadgeText}>{'\u26A1'} Auto-synced from expenses</Text>
           </View>
+
+          {/* Group affects goal toggle — only show when group trackers are active */}
+          {trackerState.activeGroupIds.length > 0 && (
+            <TouchableOpacity
+              style={styles.groupGoalToggle}
+              onPress={toggleGroupAffectsGoal}
+              activeOpacity={0.7}
+            >
+              <View style={[
+                styles.groupGoalToggleIndicator,
+                trackerState.groupAffectsGoal && styles.groupGoalToggleOn,
+              ]} />
+              <Text style={styles.groupGoalToggleText}>
+                {trackerState.groupAffectsGoal
+                  ? 'Group expenses count toward goal'
+                  : 'Group expenses excluded from goal'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* ── Streak ── */}
@@ -1009,21 +1088,36 @@ export default function GoalsScreen() {
             <Text style={styles.detailLabel}>Salary</Text>
             <Text style={styles.detailValueDim}>{formatCurrency(goal.salary)}</Text>
           </View>
-          <View style={styles.detailDividerThin} />
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>EMIs</Text>
-            <Text style={styles.detailValueDim}>{formatCurrency(goal.emis)}</Text>
-          </View>
-          <View style={styles.detailDividerThin} />
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Fixed expenses</Text>
-            <Text style={styles.detailValueDim}>{formatCurrency(goal.expenses)}</Text>
-          </View>
-          <View style={styles.detailDividerThin} />
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Maintenance</Text>
-            <Text style={styles.detailValueDim}>{formatCurrency(goal.maintenance)}</Text>
-          </View>
+          {goal.emis > 0 && (<>
+            <View style={styles.detailDividerThin} />
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>EMIs</Text>
+              <Text style={styles.detailValueDim}>{formatCurrency(goal.emis)}</Text>
+            </View>
+          </>)}
+          {goal.expenses > 0 && (<>
+            <View style={styles.detailDividerThin} />
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Rent + Bills</Text>
+              <Text style={styles.detailValueDim}>{formatCurrency(goal.expenses)}</Text>
+            </View>
+          </>)}
+          {goal.maintenance > 0 && (<>
+            <View style={styles.detailDividerThin} />
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Maintenance</Text>
+              <Text style={styles.detailValueDim}>{formatCurrency(goal.maintenance)}</Text>
+            </View>
+          </>)}
+          {(goal.customFinances || []).filter(f => f.amount > 0).map((f, i) => (
+            <React.Fragment key={i}>
+              <View style={styles.detailDividerThin} />
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>{f.label || 'Custom'}</Text>
+                <Text style={styles.detailValueDim}>{formatCurrency(f.amount)}</Text>
+              </View>
+            </React.Fragment>
+          ))}
         </View>
       </View>
     );
@@ -1409,6 +1503,42 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: COLORS.primary,
+  },
+
+  /* ── Custom Finance Fields ───────────────────────────────────────── */
+  customFinanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  removeCustomBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  removeCustomBtnText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontWeight: '700',
+  },
+  addCustomBtn: {
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+    marginTop: 4,
+  },
+  addCustomBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
   },
 
   /* ── Submit Button ────────────────────────────────────────────────── */
@@ -1808,6 +1938,35 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.success,
     letterSpacing: 0.3,
+  },
+
+  /* ── Group goal toggle ────────────────────────────────────────────── */
+  groupGoalToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 8,
+  },
+  groupGoalToggleIndicator: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: COLORS.textSecondary,
+  },
+  groupGoalToggleOn: {
+    backgroundColor: COLORS.success,
+  },
+  groupGoalToggleText: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+    flex: 1,
   },
 
   /* ── Budget breakdown ──────────────────────────────────────────────── */

@@ -20,7 +20,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function PersonalExpenseScreen() {
   const nav = useNavigation<Nav>();
-  const { trackerState, togglePersonal, isListening } = useTracker();
+  const { trackerState, togglePersonal, isListening, transactionVersion } = useTracker();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -31,7 +31,7 @@ export default function PersonalExpenseScreen() {
     setLoading(false);
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => { load(); }, [load, transactionVersion]));
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   const now = new Date();

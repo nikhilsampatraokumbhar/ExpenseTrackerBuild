@@ -19,7 +19,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ReimbursementScreen() {
   const nav = useNavigation<Nav>();
-  const { trackerState, toggleReimbursement } = useTracker();
+  const { trackerState, toggleReimbursement, transactionVersion } = useTracker();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [receiptModalVisible, setReceiptModalVisible] = useState(false);
@@ -30,7 +30,7 @@ export default function ReimbursementScreen() {
     setTransactions(txns.sort((a, b) => b.timestamp - a.timestamp));
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => { load(); }, [load, transactionVersion]));
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   const total = transactions.reduce((s, t) => s + t.amount, 0);

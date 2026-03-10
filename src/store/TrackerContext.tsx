@@ -20,6 +20,7 @@ import { saveTransaction, addGroupTransaction, getGroup, getGoals, getOrCreateTo
 import { addGroupTransactionCloud, getGroupCloud } from '../services/SyncService';
 import { initDeepLinkListener } from '../services/DeepLinkService';
 import { useGroups } from './GroupContext';
+import { usePremium } from './PremiumContext';
 
 const TRACKER_STATE_KEY = '@et_tracker_state';
 
@@ -27,6 +28,7 @@ const DEFAULT_STATE: TrackerState = {
   personal: false,
   reimbursement: false,
   activeGroupIds: [],
+  groupAffectsGoal: true,
 };
 
 interface TrackerContextType {
@@ -39,6 +41,8 @@ interface TrackerContextType {
   pendingTransaction: ParsedTransaction | null;
   clearPendingTransaction: () => void;
   addTransactionToTracker: (parsed: ParsedTransaction, trackerType: TrackerType, trackerId: string) => Promise<void>;
+  transactionVersion: number; // increments on every new transaction, screens can react to this
+  toggleGroupAffectsGoal: () => void;
 }
 
 const TrackerContext = createContext<TrackerContextType>({} as TrackerContextType);
@@ -53,8 +57,10 @@ export function TrackerProvider({ children, groups, userId }: Props) {
   const [trackerState, setTrackerState] = useState<TrackerState>(DEFAULT_STATE);
   const [isListening, setIsListening] = useState(false);
   const [pendingTransaction, setPendingTransaction] = useState<ParsedTransaction | null>(null);
+  const [transactionVersion, setTransactionVersion] = useState(0);
 
   const { loadGroupTransactions, activeGroupId } = useGroups();
+  const { isPremium } = usePremium();
 
   const groupsRef = useRef(groups);
   const userIdRef = useRef(userId);
@@ -222,13 +228,32 @@ export function TrackerProvider({ children, groups, userId }: Props) {
     await AsyncStorage.setItem(TRACKER_STATE_KEY, JSON.stringify(state));
   };
 
+  /** Count how many trackers are currently active */
+  const countActiveTrackers = (state: TrackerState): number => {
+    let count = 0;
+    if (state.personal) count++;
+    if (state.reimbursement) count++;
+    count += state.activeGroupIds.length;
+    return count;
+  };
+
   const togglePersonal = useCallback(async () => {
     setTrackerState(prev => {
+      const turningOn = !prev.personal;
+      // Free users: only 1 tracker at a time
+      if (turningOn && !isPremium && countActiveTrackers(prev) >= 1) {
+        Alert.alert(
+          'Premium Feature',
+          'Free plan allows 1 active tracker at a time. Upgrade to Premium for simultaneous tracking!',
+          [{ text: 'OK' }],
+        );
+        return prev;
+      }
       const next = { ...prev, personal: !prev.personal };
       persistState(next);
       return next;
     });
-  }, []);
+  }, [isPremium]);
 
   const toggleReimbursement = useCallback(async () => {
     setTrackerState(prev => {
@@ -242,11 +267,20 @@ export function TrackerProvider({ children, groups, userId }: Props) {
         );
         return prev;
       }
+      // Free users: only 1 tracker at a time
+      if (turningOn && !isPremium && countActiveTrackers(prev) >= 1) {
+        Alert.alert(
+          'Premium Feature',
+          'Free plan allows 1 active tracker at a time. Upgrade to Premium for simultaneous tracking!',
+          [{ text: 'OK' }],
+        );
+        return prev;
+      }
       const next = { ...prev, reimbursement: !prev.reimbursement };
       persistState(next);
       return next;
     });
-  }, []);
+  }, [isPremium]);
 
   const toggleGroup = useCallback(async (groupId: string) => {
     setTrackerState(prev => {
@@ -260,12 +294,29 @@ export function TrackerProvider({ children, groups, userId }: Props) {
         );
         return prev;
       }
+      // Free users: only 1 tracker at a time
+      if (!isCurrentlyActive && !isPremium && countActiveTrackers(prev) >= 1) {
+        Alert.alert(
+          'Premium Feature',
+          'Free plan allows 1 active tracker at a time. Upgrade to Premium for simultaneous tracking!',
+          [{ text: 'OK' }],
+        );
+        return prev;
+      }
       const next = {
         ...prev,
         activeGroupIds: isCurrentlyActive
           ? prev.activeGroupIds.filter(id => id !== groupId)
           : [...prev.activeGroupIds, groupId],
       };
+      persistState(next);
+      return next;
+    });
+  }, [isPremium]);
+
+  const toggleGroupAffectsGoal = useCallback(() => {
+    setTrackerState(prev => {
+      const next = { ...prev, groupAffectsGoal: !prev.groupAffectsGoal };
       persistState(next);
       return next;
     });
@@ -300,7 +351,8 @@ export function TrackerProvider({ children, groups, userId }: Props) {
       // Use the first active goal for daily budget tracking
       const goal = goals[0];
       if (goal.dailyBudget > 0) {
-        await getOrCreateTodaySpend(goal.dailyBudget);
+        const excludeGroup = !trackerStateRef.current.groupAffectsGoal;
+        await getOrCreateTodaySpend(goal.dailyBudget, excludeGroup);
       }
     } catch {
       // Silent fail — goal sync is best-effort
@@ -348,6 +400,9 @@ export function TrackerProvider({ children, groups, userId }: Props) {
       // Personal expense → sync goal budget
       await syncGoalDailyBudget();
     }
+
+    // Bump version so screens listening to transactionVersion will re-render/reload
+    setTransactionVersion(v => v + 1);
   }, []);
 
   const clearPendingTransaction = useCallback(() => {
@@ -364,7 +419,9 @@ export function TrackerProvider({ children, groups, userId }: Props) {
     pendingTransaction,
     clearPendingTransaction,
     addTransactionToTracker,
-  }), [trackerState, isListening, togglePersonal, toggleReimbursement, toggleGroup, getActiveTrackers, pendingTransaction, clearPendingTransaction, addTransactionToTracker]);
+    transactionVersion,
+    toggleGroupAffectsGoal,
+  }), [trackerState, isListening, togglePersonal, toggleReimbursement, toggleGroup, getActiveTrackers, pendingTransaction, clearPendingTransaction, addTransactionToTracker, transactionVersion, toggleGroupAffectsGoal]);
 
   return (
     <TrackerContext.Provider value={value}>

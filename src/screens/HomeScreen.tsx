@@ -30,6 +30,7 @@ export default function HomeScreen() {
   const {
     trackerState, togglePersonal, toggleReimbursement, toggleGroup,
     getActiveTrackers, pendingTransaction, clearPendingTransaction, addTransactionToTracker,
+    transactionVersion,
   } = useTracker();
 
   const [recentTxns, setRecentTxns] = useState<Transaction[]>([]);
@@ -81,7 +82,7 @@ export default function HomeScreen() {
 
   useFocusEffect(useCallback(() => {
     loadTransactions();
-  }, [loadTransactions]));
+  }, [loadTransactions, transactionVersion]));
 
   const onRefresh = async () => {
     setRefreshing(true);

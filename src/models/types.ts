@@ -13,6 +13,7 @@ export interface TrackerState {
   personal: boolean;
   reimbursement: boolean;
   activeGroupIds: string[];
+  groupAffectsGoal: boolean; // Whether group expenses deduct from goal daily budget
 }
 
 export interface Transaction {
@@ -102,16 +103,24 @@ export interface ActiveTracker {
   label: string;
 }
 
+// Monthly finance item (custom user-defined expense category)
+export interface FinanceItem {
+  label: string;
+  amount: number;
+}
+
 // Savings Goal
 export interface SavingsGoal {
   id: string;
   name: string;
   targetAmount: number;
   targetDate: number;
+  targetMonths: number;   // user-entered months (1-36)
   salary: number;
   emis: number;
-  expenses: number;
+  expenses: number;       // rent + bills
   maintenance: number;
+  customFinances?: FinanceItem[]; // additional user-defined expenses
   dailyBudget: number;
   monthlyBudget: number;
   streak: number;
