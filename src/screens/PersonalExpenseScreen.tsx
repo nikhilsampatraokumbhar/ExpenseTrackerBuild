@@ -2,14 +2,16 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl,
   TouchableOpacity, Alert, NativeModules, Platform, AppState,
+  Modal, TextInput, KeyboardAvoidingView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
+import { useAuth } from '../store/AuthContext';
 import { useTracker } from '../store/TrackerContext';
-import { getTransactions } from '../services/StorageService';
-import { Transaction } from '../models/types';
+import { getTransactions, saveTransaction } from '../services/StorageService';
+import { Transaction, ParsedTransaction } from '../models/types';
 import TrackerToggle from '../components/TrackerToggle';
 import TransactionCard from '../components/TransactionCard';
 import { COLORS, formatCurrency } from '../utils/helpers';
@@ -20,10 +22,17 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function PersonalExpenseScreen() {
   const nav = useNavigation<Nav>();
+  const { user } = useAuth();
   const { trackerState, togglePersonal, isListening, transactionVersion } = useTracker();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Manual expense modal state
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addAmount, setAddAmount] = useState('');
+  const [addDescription, setAddDescription] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     const txns = await getTransactions('personal');
@@ -47,6 +56,33 @@ export default function PersonalExpenseScreen() {
 
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
+  const handleAddExpense = async () => {
+    const amount = parseFloat(addAmount);
+    if (!amount || amount <= 0) {
+      Alert.alert('Invalid', 'Please enter a valid amount.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const parsed: ParsedTransaction = {
+        amount,
+        type: 'debit',
+        merchant: addDescription.trim() || undefined,
+        rawMessage: `Manual entry: ${addDescription.trim() || 'Cash expense'} - ${amount}`,
+        timestamp: Date.now(),
+      };
+      await saveTransaction(parsed, 'personal', user?.id || '');
+      setShowAddModal(false);
+      setAddAmount('');
+      setAddDescription('');
+      await load();
+    } catch {
+      Alert.alert('Error', 'Failed to save expense.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const now = new Date();
   const thisMonth = transactions.filter(t => {
     const d = new Date(t.timestamp);
@@ -64,175 +100,244 @@ export default function PersonalExpenseScreen() {
   }
 
   return (
-    <FlatList
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={COLORS.primary}
-          colors={[COLORS.primary]}
-        />
-      }
-      ListHeaderComponent={
-        <>
-          {/* Toggle */}
-          <TrackerToggle
-            label="Personal Expenses"
-            subtitle="Track daily spending from SMS"
-            isActive={trackerState.personal}
-            onToggle={togglePersonal}
-            color={COLORS.personalColor}
+    <View style={styles.container}>
+      <FlatList
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
           />
+        }
+        ListHeaderComponent={
+          <>
+            {/* Toggle */}
+            <TrackerToggle
+              label="Personal Expenses"
+              subtitle="Track daily spending from SMS"
+              isActive={trackerState.personal}
+              onToggle={togglePersonal}
+              color={COLORS.personalColor}
+            />
 
-          {/* iOS Setup Banner */}
-          {Platform.OS === 'ios' && (
-            <TouchableOpacity
-              style={styles.iosSetupBanner}
-              onPress={() => nav.navigate('IOSSetup' as any)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.iosSetupEmoji}>📱</Text>
-              <View style={styles.iosSetupContent}>
-                <Text style={styles.iosSetupTitle}>Set up iPhone automation</Text>
-                <Text style={styles.iosSetupSub}>Use iOS Shortcuts for automatic tracking</Text>
-              </View>
-              <Text style={styles.iosSetupArrow}>{'>'}</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Debug diagnostics */}
-          {trackerState.personal && Platform.OS === 'android' && (
-            <View style={styles.debugBox}>
-              <Text style={styles.debugTitle}>DIAGNOSTICS</Text>
-              <Text style={styles.debugText}>
-                Listener active: {isListening ? 'YES' : 'NO'}
-              </Text>
-              <Text style={styles.debugText}>
-                SmsListenerModule: {NativeModules.SmsListenerModule ? 'LOADED' : 'MISSING'}
-              </Text>
-              <Text style={styles.debugText}>
-                SmsAndroid (polling): {NativeModules.SmsAndroid ? 'LOADED' : 'MISSING'}
-              </Text>
+            {/* iOS Setup Banner */}
+            {Platform.OS === 'ios' && (
               <TouchableOpacity
-                style={styles.debugBtn}
-                onPress={async () => {
-                  const sms = await checkSmsPermission();
-                  const notif = await requestNotificationPermission();
-                  Alert.alert('Permissions', `SMS: ${sms ? 'GRANTED' : 'DENIED'}\nNotifications: ${notif ? 'GRANTED' : 'DENIED'}`);
-                }}
+                style={styles.iosSetupBanner}
+                onPress={() => nav.navigate('IOSSetup' as any)}
+                activeOpacity={0.7}
               >
-                <Text style={styles.debugBtnText}>Check Permissions</Text>
+                <Text style={styles.iosSetupEmoji}>📱</Text>
+                <View style={styles.iosSetupContent}>
+                  <Text style={styles.iosSetupTitle}>Set up iPhone automation</Text>
+                  <Text style={styles.iosSetupSub}>Use iOS Shortcuts for automatic tracking</Text>
+                </View>
+                <Text style={styles.iosSetupArrow}>{'>'}</Text>
               </TouchableOpacity>
+            )}
+
+            {/* Debug diagnostics */}
+            {trackerState.personal && Platform.OS === 'android' && (
+              <View style={styles.debugBox}>
+                <Text style={styles.debugTitle}>DIAGNOSTICS</Text>
+                <Text style={styles.debugText}>
+                  Listener active: {isListening ? 'YES' : 'NO'}
+                </Text>
+                <Text style={styles.debugText}>
+                  SmsListenerModule: {NativeModules.SmsListenerModule ? 'LOADED' : 'MISSING'}
+                </Text>
+                <Text style={styles.debugText}>
+                  SmsAndroid (polling): {NativeModules.SmsAndroid ? 'LOADED' : 'MISSING'}
+                </Text>
+                <TouchableOpacity
+                  style={styles.debugBtn}
+                  onPress={async () => {
+                    const sms = await checkSmsPermission();
+                    const notif = await requestNotificationPermission();
+                    Alert.alert('Permissions', `SMS: ${sms ? 'GRANTED' : 'DENIED'}\nNotifications: ${notif ? 'GRANTED' : 'DENIED'}`);
+                  }}
+                >
+                  <Text style={styles.debugBtnText}>Check Permissions</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.debugBtn, { marginTop: 8 }]}
+                  onPress={async () => {
+                    try {
+                      await showTransactionNotification(
+                        {
+                          amount: 1,
+                          type: 'debit',
+                          merchant: 'Test Merchant',
+                          bank: 'HDFC Bank',
+                          rawMessage: 'Test SMS message',
+                          timestamp: Date.now(),
+                        },
+                        [{ type: 'personal', id: 'personal', label: 'Personal' }],
+                      );
+                      Alert.alert('Success', 'Test notification sent! Check your notification bar.');
+                    } catch (e: any) {
+                      Alert.alert('Error', `Notification failed: ${e.message}`);
+                    }
+                  }}
+                >
+                  <Text style={styles.debugBtnText}>Send Test Notification</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Stats hero */}
+            <LinearGradient
+              colors={['#16121A', '#0A0A0F']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.heroCard}
+            >
+              <View style={[styles.heroAccent, { backgroundColor: COLORS.personalColor }]} />
+              <View style={styles.statsRow}>
+                <View style={styles.stat}>
+                  <Text style={styles.statLabel}>THIS MONTH</Text>
+                  <Text style={[styles.statValue, { color: COLORS.personalColor }]}>
+                    {formatCurrency(totalMonthly)}
+                  </Text>
+                  <Text style={styles.statCount}>{thisMonth.length} transactions</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.stat}>
+                  <Text style={styles.statLabel}>ALL TIME</Text>
+                  <Text style={[styles.statValue, { color: COLORS.text }]}>
+                    {formatCurrency(totalAll)}
+                  </Text>
+                  <Text style={styles.statCount}>{transactions.length} total</Text>
+                </View>
+              </View>
+            </LinearGradient>
+
+            {/* Savings Goals & Reimbursement */}
+            <View style={styles.quickAccessRow}>
               <TouchableOpacity
-                style={[styles.debugBtn, { marginTop: 8 }]}
-                onPress={async () => {
-                  try {
-                    await showTransactionNotification(
-                      {
-                        amount: 1,
-                        type: 'debit',
-                        merchant: 'Test Merchant',
-                        bank: 'HDFC Bank',
-                        rawMessage: 'Test SMS message',
-                        timestamp: Date.now(),
-                      },
-                      [{ type: 'personal', id: 'personal', label: 'Personal' }],
-                    );
-                    Alert.alert('Success', 'Test notification sent! Check your notification bar.');
-                  } catch (e: any) {
-                    Alert.alert('Error', `Notification failed: ${e.message}`);
-                  }
-                }}
+                style={styles.quickAccessCard}
+                onPress={() => nav.navigate('Goals')}
+                activeOpacity={0.8}
               >
-                <Text style={styles.debugBtnText}>Send Test Notification</Text>
+                <View style={[styles.quickAccessIconWrap, { backgroundColor: `${COLORS.success}18`, borderColor: `${COLORS.success}30` }]}>
+                  <Text style={styles.quickAccessIcon}>🎯</Text>
+                </View>
+                <Text style={styles.quickAccessTitle}>Savings Goals</Text>
+                <Text style={styles.quickAccessSub}>Set targets & daily budgets</Text>
+                <Text style={styles.quickAccessChevron}>›</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.quickAccessCard}
+                onPress={() => nav.navigate('Reimbursement')}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.quickAccessIconWrap, { backgroundColor: `${COLORS.reimbursementColor}18`, borderColor: `${COLORS.reimbursementColor}30` }]}>
+                  <Text style={styles.quickAccessIcon}>🧾</Text>
+                </View>
+                <Text style={styles.quickAccessTitle}>Reimbursement</Text>
+                <Text style={styles.quickAccessSub}>Track office expenses</Text>
+                <Text style={styles.quickAccessChevron}>›</Text>
               </TouchableOpacity>
             </View>
-          )}
 
-          {/* Stats hero */}
-          <LinearGradient
-            colors={['#16121A', '#0A0A0F']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.heroCard}
-          >
-            <View style={[styles.heroAccent, { backgroundColor: COLORS.personalColor }]} />
-            <View style={styles.statsRow}>
-              <View style={styles.stat}>
-                <Text style={styles.statLabel}>THIS MONTH</Text>
-                <Text style={[styles.statValue, { color: COLORS.personalColor }]}>
-                  {formatCurrency(totalMonthly)}
+            {/* Section heading */}
+            <Text style={styles.sectionTitle}>ALL TRANSACTIONS</Text>
+
+            {transactions.length === 0 && (
+              <View style={styles.empty}>
+                <View style={styles.emptyIcon}>
+                  <Text style={styles.emptyEmoji}>💳</Text>
+                </View>
+                <Text style={styles.emptyText}>
+                  {trackerState.personal
+                    ? 'No personal expenses yet'
+                    : 'Enable the tracker above to start'}
                 </Text>
-                <Text style={styles.statCount}>{thisMonth.length} transactions</Text>
               </View>
-              <View style={styles.statDivider} />
-              <View style={styles.stat}>
-                <Text style={styles.statLabel}>ALL TIME</Text>
-                <Text style={[styles.statValue, { color: COLORS.text }]}>
-                  {formatCurrency(totalAll)}
-                </Text>
-                <Text style={styles.statCount}>{transactions.length} total</Text>
-              </View>
+            )}
+          </>
+        }
+        data={transactions}
+        keyExtractor={item => item.id}
+        renderItem={({ item }) => (
+          <TransactionCard
+            transaction={item}
+            onPress={() => nav.navigate('TransactionDetail', { transactionId: item.id })}
+          />
+        )}
+      />
+
+      {/* Add Expense FAB */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => setShowAddModal(true)}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.fabIcon}>+</Text>
+        <Text style={styles.fabText}>Add Expense</Text>
+      </TouchableOpacity>
+
+      {/* Add Expense Modal */}
+      <Modal visible={showAddModal} transparent animationType="slide" onRequestClose={() => setShowAddModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.addModalOverlay}>
+          <View style={styles.addModalSheet}>
+            <View style={styles.addModalHandle} />
+            <Text style={styles.addModalTitle}>Add Expense</Text>
+            <Text style={styles.addModalSub}>Log a cash or missed expense manually</Text>
+
+            <Text style={styles.addModalLabel}>AMOUNT</Text>
+            <View style={styles.addModalAmountRow}>
+              <Text style={styles.addModalCurrency}>₹</Text>
+              <TextInput
+                style={styles.addModalAmountInput}
+                value={addAmount}
+                onChangeText={setAddAmount}
+                placeholder="0"
+                placeholderTextColor={COLORS.textLight}
+                keyboardType="decimal-pad"
+                autoFocus
+              />
             </View>
-          </LinearGradient>
 
-          {/* Savings Goals & Reimbursement */}
-          <View style={styles.quickAccessRow}>
+            <Text style={styles.addModalLabel}>DESCRIPTION</Text>
+            <TextInput
+              style={styles.addModalDescInput}
+              value={addDescription}
+              onChangeText={setAddDescription}
+              placeholder="e.g. Auto fare, Coffee, Groceries..."
+              placeholderTextColor={COLORS.textLight}
+              maxLength={200}
+            />
+
             <TouchableOpacity
-              style={styles.quickAccessCard}
-              onPress={() => nav.navigate('Goals')}
+              style={[styles.addModalSaveBtn, saving && { opacity: 0.5 }]}
+              onPress={handleAddExpense}
+              disabled={saving}
               activeOpacity={0.8}
             >
-              <View style={[styles.quickAccessIconWrap, { backgroundColor: `${COLORS.success}18`, borderColor: `${COLORS.success}30` }]}>
-                <Text style={styles.quickAccessIcon}>🎯</Text>
-              </View>
-              <Text style={styles.quickAccessTitle}>Savings Goals</Text>
-              <Text style={styles.quickAccessSub}>Set targets & daily budgets</Text>
-              <Text style={styles.quickAccessChevron}>›</Text>
+              <LinearGradient
+                colors={[COLORS.primary, COLORS.primaryDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.addModalSaveBtnGradient}
+              >
+                <Text style={styles.addModalSaveBtnText}>
+                  {saving ? 'Saving...' : 'Save Expense'}
+                </Text>
+              </LinearGradient>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.quickAccessCard}
-              onPress={() => nav.navigate('Reimbursement')}
-              activeOpacity={0.8}
-            >
-              <View style={[styles.quickAccessIconWrap, { backgroundColor: `${COLORS.reimbursementColor}18`, borderColor: `${COLORS.reimbursementColor}30` }]}>
-                <Text style={styles.quickAccessIcon}>🧾</Text>
-              </View>
-              <Text style={styles.quickAccessTitle}>Reimbursement</Text>
-              <Text style={styles.quickAccessSub}>Track office expenses</Text>
-              <Text style={styles.quickAccessChevron}>›</Text>
+            <TouchableOpacity style={styles.addModalCancelBtn} onPress={() => { setShowAddModal(false); setAddAmount(''); setAddDescription(''); }}>
+              <Text style={styles.addModalCancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
-
-          {/* Section heading */}
-          <Text style={styles.sectionTitle}>ALL TRANSACTIONS</Text>
-
-          {transactions.length === 0 && (
-            <View style={styles.empty}>
-              <View style={styles.emptyIcon}>
-                <Text style={styles.emptyEmoji}>💳</Text>
-              </View>
-              <Text style={styles.emptyText}>
-                {trackerState.personal
-                  ? 'No personal expenses yet'
-                  : 'Enable the tracker above to start'}
-              </Text>
-            </View>
-          )}
-        </>
-      }
-      data={transactions}
-      keyExtractor={item => item.id}
-      renderItem={({ item }) => (
-        <TransactionCard
-          transaction={item}
-          onPress={() => nav.navigate('TransactionDetail', { transactionId: item.id })}
-        />
-      )}
-    />
+        </KeyboardAvoidingView>
+      </Modal>
+    </View>
   );
 }
 
@@ -412,5 +517,138 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: COLORS.textSecondary,
     fontWeight: '600',
+  },
+
+  /* ── FAB ──────────────────────────────────────────────────────── */
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.personalColor,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 30,
+    elevation: 8,
+    shadowColor: COLORS.personalColor,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+  },
+  fabIcon: {
+    color: '#0A0A0F',
+    fontSize: 20,
+    fontWeight: '800',
+    marginRight: 6,
+  },
+  fabText: {
+    color: '#0A0A0F',
+    fontWeight: '800',
+    fontSize: 14,
+    letterSpacing: 0.3,
+  },
+
+  /* ── Add Expense Modal ────────────────────────────────────────── */
+  addModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'flex-end',
+  },
+  addModalSheet: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 24,
+    paddingBottom: 40,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    borderBottomWidth: 0,
+  },
+  addModalHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.surfaceHigher,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  addModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: COLORS.text,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  addModalSub: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  addModalLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    letterSpacing: 1.5,
+    marginBottom: 8,
+  },
+  addModalAmountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.glass,
+    borderRadius: 16,
+    paddingHorizontal: 20,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    marginBottom: 20,
+  },
+  addModalCurrency: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: COLORS.primary,
+    marginRight: 4,
+  },
+  addModalAmountInput: {
+    flex: 1,
+    fontSize: 28,
+    fontWeight: '800',
+    color: COLORS.text,
+    paddingVertical: 14,
+  },
+  addModalDescInput: {
+    backgroundColor: COLORS.glass,
+    borderRadius: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    fontSize: 14,
+    color: COLORS.text,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    marginBottom: 24,
+  },
+  addModalSaveBtn: {
+    borderRadius: 30,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  addModalSaveBtnGradient: {
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderRadius: 30,
+  },
+  addModalSaveBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  addModalCancelBtn: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  addModalCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
   },
 });
