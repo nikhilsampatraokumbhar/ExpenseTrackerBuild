@@ -1,12 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text, View } from 'react-native';
+import { Text, View, BackHandler, Alert, Platform } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-import { Platform } from 'react-native';
 import HomeScreen from '../screens/HomeScreen';
 import PersonalExpenseScreen from '../screens/PersonalExpenseScreen';
 import ReimbursementScreen from '../screens/ReimbursementScreen';
@@ -101,6 +100,32 @@ function TabIcon({ name, focused }: { name: string; focused: boolean }) {
   );
 }
 
+function useExitConfirmation() {
+  const handleBackPress = useCallback(() => {
+    Alert.alert(
+      'Exit Trackk?',
+      'Are you sure you want to exit the app?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Exit', style: 'destructive', onPress: () => BackHandler.exitApp() },
+      ],
+    );
+    return true;
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', handleBackPress);
+      return () => sub.remove();
+    }, [handleBackPress]),
+  );
+}
+
+function HomeWithExitConfirmation() {
+  useExitConfirmation();
+  return <HomeScreen />;
+}
+
 function MainTabs() {
   const insets = useSafeAreaInsets();
   const LABELS: Record<string, string> = {
@@ -113,6 +138,7 @@ function MainTabs() {
 
   return (
     <Tab.Navigator
+      backBehavior="initialRoute"
       screenOptions={({ route }) => ({
         tabBarIcon: ({ focused }) => <TabIcon name={route.name} focused={focused} />,
         tabBarLabel: LABELS[route.name] || route.name,
@@ -137,7 +163,7 @@ function MainTabs() {
         headerShown: false,
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Home" component={HomeWithExitConfirmation} />
       <Tab.Screen name="Personal" component={PersonalExpenseScreen} />
       <Tab.Screen name="Groups" component={GroupListScreen} />
       <Tab.Screen name="Insights" component={InsightsScreen} />
