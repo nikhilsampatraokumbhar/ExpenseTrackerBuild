@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../utils/helpers';
+import Logo from '../components/Logo';
 
 const { width } = Dimensions.get('window');
 
@@ -75,9 +76,15 @@ export default function OnboardingScreen({ onComplete }: Props) {
             style={styles.slide}
           >
             <View style={styles.slideContent}>
-              <View style={styles.emojiWrap}>
-                <Text style={styles.emoji}>{slide.emoji}</Text>
-              </View>
+              {index === 0 ? (
+                <View style={styles.logoWrap}>
+                  <Logo size={72} />
+                </View>
+              ) : (
+                <View style={styles.emojiWrap}>
+                  <Text style={styles.emoji}>{slide.emoji}</Text>
+                </View>
+              )}
               <Text style={styles.title}>{slide.title}</Text>
               <Text style={styles.subtitle}>{slide.subtitle}</Text>
             </View>
@@ -160,6 +167,9 @@ const styles = StyleSheet.create({
   slideContent: {
     alignItems: 'center',
     paddingHorizontal: 40,
+  },
+  logoWrap: {
+    marginBottom: 32,
   },
   emojiWrap: {
     width: 100,
