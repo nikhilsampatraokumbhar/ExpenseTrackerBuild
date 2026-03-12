@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import { View, StyleSheet, Animated } from 'react-native';
 import { COLORS } from '../utils/helpers';
+import Logo from './Logo';
 
 export default function SplashScreen() {
   const opacity = useRef(new Animated.Value(0)).current;
@@ -23,11 +24,9 @@ export default function SplashScreen() {
 
   return (
     <View style={styles.container}>
-      <Animated.View style={[styles.logoWrap, { opacity, transform: [{ scale }] }]}>
-        <Text style={styles.logo}>T</Text>
+      <Animated.View style={{ opacity, transform: [{ scale }] }}>
+        <Logo size={90} showName showSlogan />
       </Animated.View>
-      <Animated.Text style={[styles.name, { opacity }]}>Trackk</Animated.Text>
-      <Animated.Text style={[styles.tagline, { opacity }]}>Smart expense tracking</Animated.Text>
       <Animated.View style={[styles.dotRow, { opacity: dotOpacity }]}>
         <View style={styles.dot} />
         <View style={styles.dot} />
@@ -44,35 +43,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  logoWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: 24,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  logo: {
-    fontSize: 40,
-    fontWeight: '900',
-    color: '#0A0A0F',
-  },
-  name: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: COLORS.text,
-    letterSpacing: 1,
-    marginBottom: 4,
-  },
-  tagline: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    marginBottom: 40,
-  },
   dotRow: {
     flexDirection: 'row',
     gap: 6,
+    marginTop: 40,
   },
   dot: {
     width: 6,

@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { COLORS } from '../utils/helpers';
 import { sendOTP, verifyOTP } from '../services/FirebaseConfig';
+import Logo from '../components/Logo';
 
 type Step = 'phone' | 'otp';
 
@@ -163,11 +164,7 @@ export default function LoginScreen({ onAuthSuccess }: Props) {
       <View style={styles.inner}>
         {/* Logo / Brand */}
         <View style={styles.brand}>
-          <View style={styles.logoContainer}>
-            <Text style={styles.logoText}>T</Text>
-          </View>
-          <Text style={styles.appName}>Trackk</Text>
-          <Text style={styles.tagline}>Expense tracking, simplified</Text>
+          <Logo size={72} showName showSlogan />
         </View>
 
         <Animated.View
@@ -313,34 +310,6 @@ const styles = StyleSheet.create({
   brand: {
     alignItems: 'center',
     marginBottom: 48,
-  },
-  logoContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    backgroundColor: `${COLORS.primary}20`,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: `${COLORS.primary}40`,
-  },
-  logoText: {
-    fontSize: 36,
-    fontWeight: '900',
-    color: COLORS.primary,
-  },
-  appName: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: COLORS.text,
-    letterSpacing: -0.5,
-    marginBottom: 6,
-  },
-  tagline: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    fontWeight: '500',
   },
 
   // Form
