@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   ActivityIndicator, RefreshControl, Alert, Modal,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -91,7 +92,7 @@ export default function GroupListScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <FlatList
         contentContainerStyle={styles.content}
         refreshControl={
@@ -105,6 +106,7 @@ export default function GroupListScreen() {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <>
+            <Text style={styles.screenTitle}>Your Groups</Text>
             {!isPremium && (
               <TouchableOpacity
                 style={styles.premiumBanner}
@@ -288,13 +290,14 @@ export default function GroupListScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: 16, paddingBottom: 100 },
+  screenTitle: { fontSize: 24, fontWeight: '800', color: COLORS.text, marginBottom: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background },
 
   /* ── Premium Banner ──────────────────────────────────────── */

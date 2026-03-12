@@ -4,6 +4,7 @@ import {
   TouchableOpacity, Alert, NativeModules, Platform, AppState,
   TextInput, Vibration, ScrollView, Animated,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -172,7 +173,7 @@ export default function PersonalExpenseScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <SectionList
         style={{ flex: 1 }}
         contentContainerStyle={styles.content}
@@ -370,7 +371,7 @@ export default function PersonalExpenseScreen() {
         items={contextMenu.transaction ? getContextMenuItems(contextMenu.transaction) : []}
         title={contextMenu.transaction?.description}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 

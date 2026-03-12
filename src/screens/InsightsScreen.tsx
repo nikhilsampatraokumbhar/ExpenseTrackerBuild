@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -140,7 +141,7 @@ export default function InsightsScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }} edges={['top']}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
@@ -372,7 +373,7 @@ export default function InsightsScreen() {
           </View>
         </TouchableOpacity>
       </BottomSheet>
-    </View>
+    </SafeAreaView>
   );
 }
 

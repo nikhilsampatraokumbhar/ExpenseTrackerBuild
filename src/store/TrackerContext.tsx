@@ -342,16 +342,6 @@ export function TrackerProvider({ children, groups, userId }: Props) {
 
   const togglePersonal = useCallback(async () => {
     setTrackerState(prev => {
-      const turningOn = !prev.personal;
-      // Free users: only 1 tracker at a time
-      if (turningOn && !isPremium && countActiveTrackers(prev) >= 1) {
-        Alert.alert(
-          'Premium Feature',
-          'Free plan allows 1 active tracker at a time. Upgrade to Premium for simultaneous tracking!',
-          [{ text: 'OK' }],
-        );
-        return prev;
-      }
       const next = { ...prev, personal: !prev.personal };
       persistState(next);
       return next;
@@ -365,20 +355,12 @@ export function TrackerProvider({ children, groups, userId }: Props) {
       if (turningOn && prev.activeGroupIds.length > 0) {
         Alert.alert(
           'Tracker Conflict',
-          'Reimbursement and Group trackers cannot be active at the same time.\n\nDisable your group trackers first.',
+          'Reimbursement and Group tracking cannot be active at the same time.\n\nDisable your group tracker first.',
           [{ text: 'OK' }],
         );
         return prev;
       }
-      // Free users: only 1 tracker at a time
-      if (turningOn && !isPremium && countActiveTrackers(prev) >= 1) {
-        Alert.alert(
-          'Premium Feature',
-          'Free plan allows 1 active tracker at a time. Upgrade to Premium for simultaneous tracking!',
-          [{ text: 'OK' }],
-        );
-        return prev;
-      }
+      // Free users: Personal + 1 reimbursement allowed (no extra limit needed here)
       const next = { ...prev, reimbursement: !prev.reimbursement };
       persistState(next);
       return next;
@@ -392,16 +374,16 @@ export function TrackerProvider({ children, groups, userId }: Props) {
       if (!isCurrentlyActive && prev.reimbursement) {
         Alert.alert(
           'Tracker Conflict',
-          'Group and Reimbursement trackers cannot be active at the same time.\n\nDisable the Reimbursement tracker first.',
+          'Group and Reimbursement tracking cannot be active at the same time.\n\nDisable the Reimbursement tracker first.',
           [{ text: 'OK' }],
         );
         return prev;
       }
-      // Free users: only 1 tracker at a time
-      if (!isCurrentlyActive && !isPremium && countActiveTrackers(prev) >= 1) {
+      // Only 1 group tracker at a time for all users
+      if (!isCurrentlyActive && prev.activeGroupIds.length >= 1) {
         Alert.alert(
-          'Premium Feature',
-          'Free plan allows 1 active tracker at a time. Upgrade to Premium for simultaneous tracking!',
+          'One Group at a Time',
+          'You can only track one group at a time. Disable your current group tracker first.',
           [{ text: 'OK' }],
         );
         return prev;
