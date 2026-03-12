@@ -342,6 +342,15 @@ export function TrackerProvider({ children, groups, userId }: Props) {
 
   const togglePersonal = useCallback(async () => {
     setTrackerState(prev => {
+      const turningOn = !prev.personal;
+      if (turningOn && !isPremium && countActiveTrackers(prev) >= 1) {
+        Alert.alert(
+          'Upgrade to Premium',
+          'Free plan supports one active tracker. Upgrade to Premium for simultaneous tracking across Personal, Group, and Reimbursement!',
+          [{ text: 'OK' }],
+        );
+        return prev;
+      }
       const next = { ...prev, personal: !prev.personal };
       persistState(next);
       return next;
@@ -360,7 +369,15 @@ export function TrackerProvider({ children, groups, userId }: Props) {
         );
         return prev;
       }
-      // Free users: Personal + 1 reimbursement allowed (no extra limit needed here)
+      // Free users: only 1 active tracker
+      if (turningOn && !isPremium && countActiveTrackers(prev) >= 1) {
+        Alert.alert(
+          'Upgrade to Premium',
+          'Free plan supports one active tracker. Upgrade to Premium for simultaneous tracking across Personal, Group, and Reimbursement!',
+          [{ text: 'OK' }],
+        );
+        return prev;
+      }
       const next = { ...prev, reimbursement: !prev.reimbursement };
       persistState(next);
       return next;
@@ -384,6 +401,15 @@ export function TrackerProvider({ children, groups, userId }: Props) {
         Alert.alert(
           'One Group at a Time',
           'You can only track one group at a time. Disable your current group tracker first.',
+          [{ text: 'OK' }],
+        );
+        return prev;
+      }
+      // Free users: only 1 active tracker
+      if (!isCurrentlyActive && !isPremium && countActiveTrackers(prev) >= 1) {
+        Alert.alert(
+          'Upgrade to Premium',
+          'Free plan supports one active tracker. Upgrade to Premium for simultaneous tracking across Personal, Group, and Reimbursement!',
           [{ text: 'OK' }],
         );
         return prev;

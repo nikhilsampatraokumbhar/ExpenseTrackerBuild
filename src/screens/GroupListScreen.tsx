@@ -19,6 +19,7 @@ import {
   dismissRetentionBanner,
   markSoftAlertShown,
 } from '../services/DataRetentionService';
+import { archiveGroup } from '../services/StorageService';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -82,6 +83,37 @@ export default function GroupListScreen() {
     await refreshGroups();
     setRefreshing(false);
   };
+
+  const handleArchiveGroup = (groupId: string, groupName: string) => {
+    if (!isPremium) {
+      Alert.alert(
+        'Premium Feature',
+        'Group archiving is a Premium feature. Upgrade to keep your groups organized!',
+        [
+          { text: 'Not Now', style: 'cancel' },
+          { text: 'View Plans', onPress: () => nav.navigate('Pricing') },
+        ],
+      );
+      return;
+    }
+    Alert.alert(
+      'Archive Group',
+      `Archive "${groupName}"? It will be moved to the archived section.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Archive',
+          onPress: async () => {
+            await archiveGroup(groupId);
+            await refreshGroups();
+          },
+        },
+      ],
+    );
+  };
+
+  const activeGroups = groups.filter(g => !g.archived);
+  const archivedGroups = groups.filter(g => g.archived);
 
   if (loading) {
     return (
@@ -149,7 +181,7 @@ export default function GroupListScreen() {
             </Text>
           </View>
         }
-        data={groups}
+        data={activeGroups}
         keyExtractor={item => item.id}
         renderItem={({ item }) => {
           const color = getColorForId(item.id);
@@ -160,6 +192,8 @@ export default function GroupListScreen() {
               <TouchableOpacity
                 style={styles.groupInfoRow}
                 onPress={() => nav.navigate('GroupDetail', { groupId: item.id })}
+                onLongPress={() => handleArchiveGroup(item.id, item.name)}
+                delayLongPress={500}
                 activeOpacity={0.7}
               >
                 <View style={[styles.groupIcon, { backgroundColor: `${color}22` }]}>
@@ -239,6 +273,37 @@ export default function GroupListScreen() {
             </View>
           );
         }}
+        ListFooterComponent={
+          archivedGroups.length > 0 ? (
+            <View style={styles.archivedSection}>
+              <Text style={styles.sectionTitle}>ARCHIVED</Text>
+              {archivedGroups.map(item => {
+                const color = getColorForId(item.id);
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={[styles.groupCard, { opacity: 0.6 }]}
+                    onPress={() => nav.navigate('GroupDetail', { groupId: item.id })}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.groupInfoRow}>
+                      <View style={[styles.groupIcon, { backgroundColor: `${color}22` }]}>
+                        <Text style={[styles.groupInitial, { color }]}>
+                          {(item.name || 'G')[0].toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.groupTextWrap}>
+                        <Text style={styles.groupName}>{item.name}</Text>
+                        <Text style={styles.memberCount}>{item.members.length} members · Archived</Text>
+                      </View>
+                      <Text style={styles.chevron}>›</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : null
+        }
       />
 
       {/* FAB */}
@@ -578,6 +643,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.textSecondary,
   },
+
+  archivedSection: { marginTop: 24 },
 
   fab: {
     position: 'absolute',

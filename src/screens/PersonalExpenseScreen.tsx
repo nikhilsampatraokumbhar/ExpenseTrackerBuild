@@ -388,8 +388,8 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', padding: 22 },
   stat: { flex: 1, alignItems: 'center' },
   statDivider: { width: 1, backgroundColor: COLORS.glassBorder, marginHorizontal: 16 },
-  statLabel: { fontSize: 9, color: COLORS.textSecondary, letterSpacing: 2, fontWeight: '700', marginBottom: 8 },
-  statValue: { fontSize: 20, fontWeight: '800', letterSpacing: -0.5 },
+  statLabel: { fontSize: 10, color: COLORS.textSecondary, letterSpacing: 2, fontWeight: '700', marginBottom: 8 },
+  statValue: { fontSize: 32, fontWeight: '800', letterSpacing: -0.5 },
   statCount: { fontSize: 11, color: COLORS.textSecondary, marginTop: 4 },
 
   quickAccessRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },

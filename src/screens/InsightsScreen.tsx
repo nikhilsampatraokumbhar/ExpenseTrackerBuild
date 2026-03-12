@@ -395,9 +395,9 @@ const styles = StyleSheet.create({
   heroRow: { flexDirection: 'row', padding: 20 },
   heroStat: { flex: 1, alignItems: 'center' },
   heroDivider: { width: 1, backgroundColor: COLORS.border, marginHorizontal: 16 },
-  heroStatLabel: { fontSize: 9, color: COLORS.textSecondary, letterSpacing: 2, fontWeight: '700', marginBottom: 8 },
-  heroStatValue: { fontSize: 22, fontWeight: '800', color: COLORS.primary, letterSpacing: -0.5 },
-  heroStatSub: { fontSize: 11, color: COLORS.textSecondary, marginTop: 4 },
+  heroStatLabel: { fontSize: 10, color: COLORS.textSecondary, letterSpacing: 2, fontWeight: '700', marginBottom: 8 },
+  heroStatValue: { fontSize: 30, fontWeight: '800', color: COLORS.primary, letterSpacing: -0.5 },
+  heroStatSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 4 },
 
   comparisonCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, borderRadius: 14, padding: 14, marginBottom: 16, borderWidth: 1, gap: 12 },
   comparisonEmoji: { fontSize: 24 },
