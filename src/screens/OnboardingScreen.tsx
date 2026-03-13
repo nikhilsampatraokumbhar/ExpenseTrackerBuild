@@ -12,26 +12,200 @@ interface Props {
   onComplete: () => void;
 }
 
+/* ── Flow Step Component ─────────────────────────────────────────── */
+
+function FlowStep({
+  step,
+  emoji,
+  label,
+  sublabel,
+  color,
+  isLast,
+}: {
+  step: number;
+  emoji: string;
+  label: string;
+  sublabel?: string;
+  color: string;
+  isLast?: boolean;
+}) {
+  return (
+    <View style={flowStyles.row}>
+      {/* Left: step number + connector line */}
+      <View style={flowStyles.left}>
+        <View style={[flowStyles.stepCircle, { borderColor: color }]}>
+          <Text style={[flowStyles.stepNum, { color }]}>{step}</Text>
+        </View>
+        {!isLast && <View style={[flowStyles.connector, { backgroundColor: `${color}30` }]} />}
+      </View>
+
+      {/* Right: content card */}
+      <View style={[flowStyles.card, { borderColor: `${color}20` }]}>
+        <Text style={flowStyles.emoji}>{emoji}</Text>
+        <View style={flowStyles.cardText}>
+          <Text style={flowStyles.label}>{label}</Text>
+          {sublabel && <Text style={flowStyles.sublabel}>{sublabel}</Text>}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const flowStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    marginBottom: 0,
+  },
+  left: {
+    width: 36,
+    alignItems: 'center',
+  },
+  stepCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: `${COLORS.background}80`,
+  },
+  stepNum: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  connector: {
+    width: 2,
+    flex: 1,
+    minHeight: 12,
+    borderRadius: 1,
+  },
+  card: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.glass,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+    marginLeft: 10,
+    marginBottom: 8,
+  },
+  emoji: {
+    fontSize: 22,
+    marginRight: 10,
+  },
+  cardText: {
+    flex: 1,
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.text,
+    letterSpacing: 0.1,
+  },
+  sublabel: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+    lineHeight: 15,
+  },
+});
+
+/* ── Pill Badge ──────────────────────────────────────────────────── */
+
+function PillBadge({ text, color }: { text: string; color: string }) {
+  return (
+    <View style={[pillStyles.badge, { backgroundColor: `${color}15`, borderColor: `${color}30` }]}>
+      <Text style={[pillStyles.text, { color }]}>{text}</Text>
+    </View>
+  );
+}
+
+const pillStyles = StyleSheet.create({
+  badge: {
+    alignSelf: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  text: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+  },
+});
+
+/* ── Slide Definitions ───────────────────────────────────────────── */
+
 const SLIDES = [
+  // Slide 1: Welcome / Auto-Track
   {
-    emoji: '💳',
-    title: 'Track Every Rupee',
-    subtitle: 'Automatically detect expenses from SMS.\nZero manual entry. Zero battery drain.',
     gradient: ['#1A1020', '#0A0A0F'] as [string, string],
+    badge: null,
+    useLogo: true,
+    title: 'Track Every Rupee',
+    subtitle: 'Zero manual entry. Zero battery drain.',
+    accentColor: COLORS.primary,
+    steps: [
+      { emoji: '📱', label: 'Get an SMS from your bank', sublabel: 'Debits, UPI, card payments' },
+      { emoji: '🔔', label: 'Trackk detects it instantly', sublabel: 'No battery drain — native SMS listener' },
+      { emoji: '✅', label: 'One tap to add or auto-save', sublabel: 'Review later at end of day' },
+      { emoji: '📊', label: 'See where your money goes', sublabel: 'Personal, group, or reimbursement' },
+    ],
   },
+  // Slide 2: Groups
   {
-    emoji: '👥',
-    title: 'Split With Friends',
-    subtitle: 'Create groups, split expenses, settle debts.\nSimplified payments via UPI or cash.',
     gradient: ['#101A18', '#0A0A0F'] as [string, string],
+    badge: 'GROUP EXPENSES',
+    useLogo: false,
+    headerEmoji: '👥',
+    title: 'Split With Friends',
+    subtitle: 'From trips to everyday expenses.',
+    accentColor: COLORS.groupColor,
+    steps: [
+      { emoji: '➕', label: 'Create a group', sublabel: 'Add members by name & phone' },
+      { emoji: '📡', label: 'Start the tracker', sublabel: 'Expenses are auto-detected from SMS' },
+      { emoji: '💸', label: 'Split in one tap', sublabel: 'Equal, custom, or with guests' },
+      { emoji: '🤝', label: 'Settle via UPI or cash', sublabel: 'One tap — everyone gets notified' },
+    ],
   },
+  // Slide 3: Goals
   {
-    emoji: '🎯',
-    title: 'Hit Your Goals',
-    subtitle: 'Set savings targets with daily budgets.\nBuild streaks and watch your jar grow.',
     gradient: ['#1A1510', '#0A0A0F'] as [string, string],
+    badge: 'SAVINGS GOALS',
+    useLogo: false,
+    headerEmoji: '🎯',
+    title: 'Hit Your Goals',
+    subtitle: 'Daily budgets that actually work.',
+    accentColor: COLORS.warning,
+    steps: [
+      { emoji: '🏷️', label: 'Set a savings target', sublabel: 'e.g. ₹1.5L for Spain in 6 months' },
+      { emoji: '📅', label: 'Get a daily budget', sublabel: 'Auto-calculated from your income & expenses' },
+      { emoji: '🔥', label: 'Build streaks', sublabel: 'Stay under budget, grow your streak' },
+      { emoji: '🏦', label: 'Watch your jar grow', sublabel: 'Leftover rolls into your savings jar' },
+    ],
+  },
+  // Slide 4: Subscriptions, EMIs, Investments
+  {
+    gradient: ['#101218', '#0A0A0F'] as [string, string],
+    badge: 'AUTO-DETECTED',
+    useLogo: false,
+    headerEmoji: '🔄',
+    title: 'Subscriptions, EMIs\n& Investments',
+    subtitle: 'All tracked automatically from your SMS.',
+    accentColor: COLORS.personalColor,
+    steps: [
+      { emoji: '📺', label: 'Subscriptions', sublabel: 'Netflix, Spotify, YouTube — auto-detected' },
+      { emoji: '🏠', label: 'EMIs', sublabel: 'Home, car, personal loans — with countdown' },
+      { emoji: '📈', label: 'Investments', sublabel: 'SIPs & mutual funds — amount auto-updates' },
+      { emoji: '🔔', label: 'Smart alerts', sublabel: 'Overdue payments, price changes, EMI completion' },
+    ],
   },
 ];
+
+/* ── Main Component ──────────────────────────────────────────────── */
 
 export default function OnboardingScreen({ onComplete }: Props) {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -76,17 +250,40 @@ export default function OnboardingScreen({ onComplete }: Props) {
             style={styles.slide}
           >
             <View style={styles.slideContent}>
-              {index === 0 ? (
+              {/* Badge */}
+              {slide.badge && (
+                <PillBadge text={slide.badge} color={slide.accentColor} />
+              )}
+
+              {/* Header: Logo or emoji */}
+              {slide.useLogo ? (
                 <View style={styles.logoWrap}>
-                  <Logo size={72} />
+                  <Logo size={64} />
                 </View>
               ) : (
-                <View style={styles.emojiWrap}>
-                  <Text style={styles.emoji}>{slide.emoji}</Text>
+                <View style={[styles.emojiWrap, { borderColor: `${slide.accentColor}30` }]}>
+                  <Text style={styles.headerEmoji}>{(slide as any).headerEmoji}</Text>
                 </View>
               )}
+
+              {/* Title & subtitle */}
               <Text style={styles.title}>{slide.title}</Text>
               <Text style={styles.subtitle}>{slide.subtitle}</Text>
+
+              {/* Flow steps */}
+              <View style={styles.flowContainer}>
+                {slide.steps.map((step, i) => (
+                  <FlowStep
+                    key={i}
+                    step={i + 1}
+                    emoji={step.emoji}
+                    label={step.label}
+                    sublabel={step.sublabel}
+                    color={slide.accentColor}
+                    isLast={i === slide.steps.length - 1}
+                  />
+                ))}
+              </View>
             </View>
           </LinearGradient>
         ))}
@@ -161,45 +358,55 @@ const styles = StyleSheet.create({
   slide: {
     width,
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   slideContent: {
-    alignItems: 'center',
-    paddingHorizontal: 40,
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    paddingBottom: 140,
+    paddingTop: 60,
   },
   logoWrap: {
-    marginBottom: 32,
+    alignSelf: 'center',
+    marginBottom: 20,
   },
   emojiWrap: {
-    width: 100,
-    height: 100,
-    borderRadius: 30,
+    width: 72,
+    height: 72,
+    borderRadius: 22,
     backgroundColor: COLORS.glass,
     borderWidth: 1,
-    borderColor: COLORS.glassBorder,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 32,
+    alignSelf: 'center',
+    marginBottom: 20,
   },
-  emoji: {
-    fontSize: 48,
+  headerEmoji: {
+    fontSize: 36,
   },
   title: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '800',
     color: COLORS.text,
     textAlign: 'center',
-    marginBottom: 14,
+    marginBottom: 8,
     letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: 14,
     color: COLORS.textSecondary,
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 20,
     letterSpacing: 0.2,
+    marginBottom: 28,
   },
+
+  /* ── Flow Container ──────────────────────────────────────────── */
+  flowContainer: {
+    paddingLeft: 4,
+  },
+
+  /* ── Bottom Bar ──────────────────────────────────────────────── */
   bottomBar: {
     position: 'absolute',
     bottom: 0,

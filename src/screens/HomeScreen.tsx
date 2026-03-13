@@ -11,15 +11,17 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { useAuth } from '../store/AuthContext';
 import { useGroups } from '../store/GroupContext';
 import { useTracker } from '../store/TrackerContext';
-import { getTransactions, getGoals, computeTodaySpendFromTransactions, deleteTransaction, saveTransaction } from '../services/StorageService';
+import { usePremium } from '../store/PremiumContext';
+import { getTransactions, getGoals, computeTodaySpendFromTransactions, deleteTransaction, saveTransaction, getSubscriptions, getInvestments, getEMIs } from '../services/StorageService';
 import { getOverallBudget, getBudgetStatus, setBudget, deleteBudget, BudgetStatus } from '../services/BudgetService';
 import { getTodayPendingCount } from '../services/TransactionSignalEngine';
-import { Transaction, SavingsGoal } from '../models/types';
+import { Transaction, SavingsGoal, UserSubscriptionItem, InvestmentItem, EMIItem } from '../models/types';
 import AnimatedAmount from '../components/AnimatedAmount';
 import { HeroCardSkeleton } from '../components/SkeletonLoader';
 import ActiveTrackerBanner from '../components/ActiveTrackerBanner';
 import TrackerSelectionDialog from '../components/TrackerSelectionDialog';
 import UndoToast from '../components/UndoToast';
+import { checkOverdueSubscriptions, skipOverdueSubscription, removeOverdueSubscription, checkEMICompletions, OverdueSubscription, EMICompletionResult } from '../services/AutoDetectionService';
 import { COLORS, formatCurrency } from '../utils/helpers';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -28,6 +30,7 @@ export default function HomeScreen() {
   const nav = useNavigation<Nav>();
   const { user } = useAuth();
   const { groups } = useGroups();
+  const { isPremium } = usePremium();
   const {
     trackerState, getActiveTrackers, pendingTransaction, pendingGroupTracker,
     clearPendingTransaction, addTransactionToTracker,
@@ -52,6 +55,19 @@ export default function HomeScreen() {
   // Pending review count
   const [pendingReviewCount, setPendingReviewCount] = useState(0);
 
+  // Finance trackers
+  const [subscriptions, setSubscriptions] = useState<UserSubscriptionItem[]>([]);
+  const [investments, setInvestments] = useState<InvestmentItem[]>([]);
+  const [emis, setEMIs] = useState<EMIItem[]>([]);
+
+  // Overdue subscription popup
+  const [overdueItems, setOverdueItems] = useState<OverdueSubscription[]>([]);
+  const [showOverdueModal, setShowOverdueModal] = useState(false);
+
+  // EMI completion celebration
+  const [showEMICelebration, setShowEMICelebration] = useState(false);
+  const [completedEMI, setCompletedEMI] = useState<EMICompletionResult | null>(null);
+
   // Undo toast
   const [undoState, setUndoState] = useState<{ visible: boolean; message: string; txn: Transaction | null }>({ visible: false, message: '', txn: null });
 
@@ -63,9 +79,10 @@ export default function HomeScreen() {
   // Auto-open SplitEditor when a group tracker is auto-routed from notification
   useEffect(() => {
     if (pendingTransaction && pendingGroupTracker) {
+      // Capture data before clearing from queue
       const txn = pendingTransaction;
       const tracker = pendingGroupTracker;
-      clearPendingTransaction();
+      // Navigate first, then clear — data is passed via nav params so safe even if clear races
       nav.navigate('SplitEditor', {
         groupId: tracker.id,
         amount: txn.amount,
@@ -74,6 +91,7 @@ export default function HomeScreen() {
           : undefined,
         merchant: txn.merchant || undefined,
       });
+      clearPendingTransaction();
     }
   }, [pendingTransaction, pendingGroupTracker]);
 
@@ -105,6 +123,28 @@ export default function HomeScreen() {
 
     const pendingCount = await getTodayPendingCount();
     setPendingReviewCount(pendingCount);
+
+    // Load finance trackers
+    const subs = await getSubscriptions();
+    setSubscriptions(subs.filter(s => s.active));
+    const invs = await getInvestments();
+    setInvestments(invs.filter(i => i.active));
+    const ems = await getEMIs();
+    setEMIs(ems.filter(e => e.active));
+
+    // Check for completed EMIs (celebration)
+    const completedEMIs = await checkEMICompletions();
+    if (completedEMIs.length > 0) {
+      setCompletedEMI(completedEMIs[0]);
+      setShowEMICelebration(true);
+    }
+
+    // Check for overdue subscriptions (missed payment popup)
+    const overdue = await checkOverdueSubscriptions();
+    if (overdue.length > 0) {
+      setOverdueItems(overdue);
+      setShowOverdueModal(true);
+    }
 
     setLoading(false);
   }, []);
@@ -205,6 +245,20 @@ export default function HomeScreen() {
     ? Math.max(activeGoal.dailyBudget - todaySpend, 0)
     : 0;
 
+  // Subscriptions monthly total
+  const subsMonthly = subscriptions.reduce((sum, s) => {
+    return sum + (s.cycle === 'monthly' ? s.amount : s.amount / 12);
+  }, 0);
+
+  // Investments monthly total
+  const investMonthly = investments.reduce((sum, i) => {
+    if (i.cycle === 'one-time') return sum;
+    return sum + (i.cycle === 'monthly' ? i.amount : i.amount / 12);
+  }, 0);
+
+  // EMI monthly total
+  const emiMonthly = emis.reduce((sum, e) => sum + e.amount, 0);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ActiveTrackerBanner
@@ -224,14 +278,14 @@ export default function HomeScreen() {
         )}
         scrollEventThrottle={16}
       >
-        {/* Header — no profile button, already in tab bar */}
+        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.greeting}>{greeting()}</Text>
           <Text style={styles.name}>{user?.displayName || 'User'}</Text>
           <Text style={styles.contextSub}>{contextualSubtext}</Text>
         </View>
 
-        {/* Hero card with parallax */}
+        {/* Hero card — Total Spent with streak on top-right */}
         {loading ? (
           <HeroCardSkeleton />
         ) : (
@@ -243,6 +297,15 @@ export default function HomeScreen() {
               style={styles.heroCard}
             >
               <View style={styles.heroGoldLine} />
+
+              {/* Streak badge top-right */}
+              {activeGoal && activeGoal.streak > 0 && (
+                <View style={styles.streakBadge}>
+                  <Text style={styles.streakIcon}>🔥</Text>
+                  <Text style={styles.streakText}>{activeGoal.streak}d</Text>
+                </View>
+              )}
+
               <Text style={styles.heroLabel}>TOTAL SPENT</Text>
               <AnimatedAmount value={totalSpent} style={styles.heroAmount} />
               <Text style={styles.heroSub}>
@@ -275,7 +338,7 @@ export default function HomeScreen() {
           </Animated.View>
         )}
 
-        {/* Metrics Row — savings jar + streak instead of recent transactions */}
+        {/* Metrics Row — Today's Jar + This Month (no streak card) */}
         <View style={styles.metricsRow}>
           {/* Today's Budget / Savings Jar */}
           <TouchableOpacity style={styles.metricCard} onPress={() => nav.navigate('Goals')} activeOpacity={0.7}>
@@ -296,18 +359,6 @@ export default function HomeScreen() {
             )}
           </TouchableOpacity>
 
-          {/* Streak */}
-          <TouchableOpacity style={styles.metricCard} onPress={() => nav.navigate('Goals')} activeOpacity={0.7}>
-            <Text style={styles.metricIcon}>🔥</Text>
-            <Text style={styles.metricLabel}>STREAK</Text>
-            <Text style={styles.metricValue}>
-              {activeGoal ? `${activeGoal.streak}d` : '0d'}
-            </Text>
-            <Text style={styles.metricSub}>
-              {activeGoal && activeGoal.streak > 0 ? 'Keep it up!' : 'Start saving'}
-            </Text>
-          </TouchableOpacity>
-
           {/* This Month */}
           <TouchableOpacity style={styles.metricCard} onPress={() => (nav as any).navigate('Insights')} activeOpacity={0.7}>
             <Text style={styles.metricIcon}>📊</Text>
@@ -317,24 +368,34 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Review action (only when pending items exist) */}
-        {pendingReviewCount > 0 && (
-          <View style={styles.quickActionsRow}>
-            <TouchableOpacity
-              style={styles.quickActionBtn}
-              onPress={() => nav.navigate('NightlyReview')}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(138,120,240,0.15)' }]}>
-                <Text style={styles.quickActionEmoji}>🌙</Text>
-                <View style={styles.quickActionBadge}>
-                  <Text style={styles.quickActionBadgeText}>{pendingReviewCount}</Text>
+        {/* Review Expenses — always visible, premium-gated */}
+        <TouchableOpacity
+          style={styles.reviewCard}
+          onPress={() => nav.navigate('NightlyReview')}
+          activeOpacity={0.7}
+        >
+          <View style={styles.reviewLeft}>
+            <View style={styles.reviewIconRow}>
+              <Text style={styles.reviewEmoji}>🌙</Text>
+              {!isPremium && (
+                <View style={styles.premiumBadge}>
+                  <Text style={styles.premiumBadgeText}>PRO</Text>
                 </View>
-              </View>
-              <Text style={styles.quickActionLabel}>Review</Text>
-            </TouchableOpacity>
+              )}
+            </View>
+            <Text style={styles.reviewTitle}>Review Expenses</Text>
+            <Text style={styles.reviewSub}>
+              {pendingReviewCount > 0
+                ? `${pendingReviewCount} transaction${pendingReviewCount > 1 ? 's' : ''} to review`
+                : 'All caught up'}
+            </Text>
           </View>
-        )}
+          {pendingReviewCount > 0 && (
+            <View style={styles.reviewBadge}>
+              <Text style={styles.reviewBadgeText}>{pendingReviewCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
 
         {/* Goal Budget Card */}
         {activeGoal && (
@@ -352,15 +413,71 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Privacy Shield — only shown when no activity */}
-        {!loading && monthCount === 0 && (
-          <View style={styles.privacyCard}>
-            <View style={styles.privacyHeader}>
-              <Text style={styles.privacyEmoji}>🛡️</Text>
-              <Text style={styles.privacyTitle}>Privacy Shield</Text>
+        {/* Subscriptions Card */}
+        <TouchableOpacity
+          style={styles.financeCard}
+          onPress={() => nav.navigate('Subscriptions')}
+          activeOpacity={0.7}
+        >
+          <View style={styles.financeLeft}>
+            <Text style={styles.financeEmoji}>🔄</Text>
+            <View>
+              <Text style={styles.financeTitle}>Subscriptions</Text>
+              <Text style={styles.financeSub}>
+                {subscriptions.length > 0
+                  ? `${subscriptions.length} active · ${formatCurrency(subsMonthly)}/mo`
+                  : 'Track your subscriptions'}
+              </Text>
             </View>
+          </View>
+          <Text style={styles.financeArrow}>›</Text>
+        </TouchableOpacity>
+
+        {/* Investments Card */}
+        <TouchableOpacity
+          style={styles.financeCard}
+          onPress={() => nav.navigate('Investments')}
+          activeOpacity={0.7}
+        >
+          <View style={styles.financeLeft}>
+            <Text style={styles.financeEmoji}>📈</Text>
+            <View>
+              <Text style={styles.financeTitle}>Investments</Text>
+              <Text style={styles.financeSub}>
+                {investments.length > 0
+                  ? `${investments.length} active · ${formatCurrency(investMonthly)}/mo`
+                  : 'Track your investments'}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.financeArrow}>›</Text>
+        </TouchableOpacity>
+
+        {/* EMIs Card */}
+        <TouchableOpacity
+          style={styles.financeCard}
+          onPress={() => nav.navigate('EMIs')}
+          activeOpacity={0.7}
+        >
+          <View style={styles.financeLeft}>
+            <Text style={styles.financeEmoji}>🏦</Text>
+            <View>
+              <Text style={styles.financeTitle}>EMIs</Text>
+              <Text style={styles.financeSub}>
+                {emis.length > 0
+                  ? `${emis.length} active · ${formatCurrency(emiMonthly)}/mo`
+                  : 'Track your EMIs'}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.financeArrow}>›</Text>
+        </TouchableOpacity>
+
+        {/* Privacy Shield — subtle, hidden for premium users */}
+        {!loading && !isPremium && monthCount === 0 && (
+          <View style={styles.privacyCard}>
             <Text style={styles.privacyText}>
-              Trackk only reads SMS when you enable a tracker. Event-driven detection means zero battery drain. Switch off anytime.
+              🛡️ Trackk only reads SMS when a tracker is on. Zero battery drain.
             </Text>
           </View>
         )}
@@ -370,7 +487,7 @@ export default function HomeScreen() {
 
       {/* Budget editing modal */}
       <Modal visible={showBudgetModal} animationType="slide" transparent onRequestClose={() => setShowBudgetModal(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.budgetModalOverlay}>
+        <KeyboardAvoidingView behavior="padding" style={styles.budgetModalOverlay}>
           <View style={styles.budgetModalContainer}>
             <View style={styles.budgetModalHandle} />
             <Text style={styles.budgetModalTitle}>{budgetStatus ? 'Edit Monthly Budget' : 'Set Monthly Budget'}</Text>
@@ -409,16 +526,17 @@ export default function HomeScreen() {
         trackers={activeTrackers}
         onSelect={async tracker => {
           if (pendingTransaction) {
+            const txn = pendingTransaction;
             if (tracker.type === 'group') {
-              clearPendingTransaction();
               nav.navigate('SplitEditor', {
                 groupId: tracker.id,
-                amount: pendingTransaction.amount,
-                description: pendingTransaction.merchant ? `Payment at ${pendingTransaction.merchant}` : undefined,
-                merchant: pendingTransaction.merchant || undefined,
+                amount: txn.amount,
+                description: txn.merchant ? `Payment at ${txn.merchant}` : undefined,
+                merchant: txn.merchant || undefined,
               });
+              clearPendingTransaction();
             } else {
-              await addTransactionToTracker(pendingTransaction, tracker.type, tracker.id);
+              await addTransactionToTracker(txn, tracker.type, tracker.id);
               clearPendingTransaction();
               await loadTransactions();
             }
@@ -436,6 +554,73 @@ export default function HomeScreen() {
         <Text style={styles.fabIcon}>+</Text>
         <Text style={styles.fabText}>Quick Add</Text>
       </TouchableOpacity>
+
+      {/* Overdue Subscription Popup */}
+      <Modal visible={showOverdueModal} transparent animationType="fade">
+        <View style={styles.overdueOverlay}>
+          <View style={styles.overdueContent}>
+            {overdueItems.length > 0 && (
+              <>
+                <Text style={styles.overdueEmoji}>⚠️</Text>
+                <Text style={styles.overdueTitle}>
+                  {overdueItems[0].subscription.name} payment not detected
+                </Text>
+                <Text style={styles.overdueSub}>
+                  {overdueItems[0].daysPastDue} days past billing date
+                  {overdueItems[0].possiblyPaidByOther ? '\nSomeone else in the group may have paid' : ''}
+                </Text>
+                <TouchableOpacity
+                  style={styles.overdueRemoveBtn}
+                  onPress={async () => {
+                    await removeOverdueSubscription(overdueItems[0].subscription.id);
+                    const remaining = overdueItems.slice(1);
+                    setOverdueItems(remaining);
+                    if (remaining.length === 0) setShowOverdueModal(false);
+                    loadTransactions();
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.overdueRemoveText}>Remove subscription</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.overdueSkipBtn}
+                  onPress={async () => {
+                    await skipOverdueSubscription(overdueItems[0].subscription.id);
+                    const remaining = overdueItems.slice(1);
+                    setOverdueItems(remaining);
+                    if (remaining.length === 0) setShowOverdueModal(false);
+                    loadTransactions();
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.overdueSkipText}>Skip — show next month's date</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* EMI Completion Celebration */}
+      <Modal visible={showEMICelebration} transparent animationType="fade">
+        <View style={styles.overdueOverlay}>
+          <View style={styles.celebrationContent}>
+            <Text style={styles.celebrationEmoji}>🎉</Text>
+            <Text style={styles.celebrationTitle}>Bravoooo!</Text>
+            <Text style={styles.celebrationSub}>
+              Your {completedEMI?.name} EMI is fully paid!{'\n'}One less thing to worry about.
+            </Text>
+            <View style={styles.celebrationBadge}>
+              <Text style={styles.celebrationBadgeText}>EMI CLOSED</Text>
+            </View>
+            <TouchableOpacity style={styles.celebrationBtn} onPress={() => setShowEMICelebration(false)} activeOpacity={0.8}>
+              <LinearGradient colors={[COLORS.success, '#2A9A6A']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.celebrationBtnGrad}>
+                <Text style={styles.celebrationBtnText}>Amazing!</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Undo Toast */}
       <UndoToast
@@ -457,17 +642,21 @@ const styles = StyleSheet.create({
   name: { fontSize: 28, fontWeight: '800', color: COLORS.text, marginTop: 2, letterSpacing: -0.5 },
   contextSub: { fontSize: 12, color: COLORS.textLight, marginTop: 4, letterSpacing: 0.2 },
 
-  privacyCard: { backgroundColor: COLORS.glass, borderRadius: 20, padding: 18, marginBottom: 16, borderWidth: 1, borderColor: `${COLORS.success}20` },
-  privacyHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  privacyEmoji: { fontSize: 18, marginRight: 8 },
-  privacyTitle: { fontSize: 14, fontWeight: '700', color: COLORS.success, letterSpacing: 0.3 },
-  privacyText: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 19 },
+  /* Privacy Shield — subtle single-line */
+  privacyCard: { backgroundColor: COLORS.glass, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 16, borderWidth: 1, borderColor: `${COLORS.success}12` },
+  privacyText: { fontSize: 12, color: COLORS.textSecondary, lineHeight: 18 },
 
+  /* Hero card */
   heroCard: { borderRadius: 24, padding: 24, marginBottom: 24, borderWidth: 1, borderColor: COLORS.glassBorder, position: 'relative', overflow: 'hidden' },
   heroGoldLine: { position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: COLORS.primary, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   heroLabel: { fontSize: 10, color: COLORS.textSecondary, letterSpacing: 2, fontWeight: '700', marginBottom: 10 },
   heroAmount: { fontSize: 42, fontWeight: '800', color: COLORS.text, letterSpacing: -1 },
   heroSub: { fontSize: 13, color: COLORS.textSecondary, marginTop: 6 },
+
+  /* Streak badge on hero card */
+  streakBadge: { position: 'absolute', top: 16, right: 16, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(232,115,74,0.12)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, gap: 4 },
+  streakIcon: { fontSize: 14 },
+  streakText: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
 
   budgetInline: { marginTop: 18, paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.glassBorder },
   budgetRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
@@ -478,26 +667,28 @@ const styles = StyleSheet.create({
   budgetEditHint: { fontSize: 10, color: COLORS.textLight, marginTop: 8, textAlign: 'right' },
   setBudgetText: { fontSize: 13, fontWeight: '600', color: COLORS.primary, textAlign: 'center', paddingVertical: 4 },
 
-  /* Metrics Row */
-  metricsRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
+  /* Metrics Row — 2 cards now */
+  metricsRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   metricCard: { flex: 1, backgroundColor: COLORS.surface, borderRadius: 18, padding: 14, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
   metricIcon: { fontSize: 22, marginBottom: 8 },
   metricLabel: { fontSize: 8, fontWeight: '700', color: COLORS.textSecondary, letterSpacing: 1.5, marginBottom: 6 },
   metricValue: { fontSize: 18, fontWeight: '800', color: COLORS.text, letterSpacing: -0.5 },
   metricSub: { fontSize: 10, color: COLORS.textSecondary, marginTop: 3 },
 
-  /* Quick Actions */
-  quickActionsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
-  quickActionBtn: { alignItems: 'center' },
-  quickActionGradient: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  quickActionPlus: { fontSize: 26, fontWeight: '700', color: '#FFFFFF' },
-  quickActionIcon: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  quickActionEmoji: { fontSize: 22 },
-  quickActionLabel: { fontSize: 10, fontWeight: '700', color: COLORS.textSecondary, letterSpacing: 0.3 },
-  quickActionBadge: { position: 'absolute', top: -4, right: -4, backgroundColor: COLORS.danger, borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  quickActionBadgeText: { fontSize: 9, fontWeight: '800', color: '#FFFFFF' },
+  /* Review Expenses Card */
+  reviewCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.surface, borderRadius: 18, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(138,120,240,0.15)' },
+  reviewLeft: { flex: 1 },
+  reviewIconRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  reviewEmoji: { fontSize: 22 },
+  premiumBadge: { backgroundColor: COLORS.primary, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 },
+  premiumBadgeText: { fontSize: 8, fontWeight: '800', color: '#FFF', letterSpacing: 0.5 },
+  reviewTitle: { fontSize: 15, fontWeight: '700', color: COLORS.text, marginBottom: 4 },
+  reviewSub: { fontSize: 12, color: COLORS.textSecondary },
+  reviewBadge: { backgroundColor: COLORS.danger, borderRadius: 12, minWidth: 24, height: 24, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  reviewBadgeText: { fontSize: 12, fontWeight: '800', color: '#FFF' },
 
-  goalBudgetCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.surface, borderRadius: 20, padding: 18, marginBottom: 20, borderWidth: 1, borderColor: COLORS.border },
+  /* Goal Budget Card */
+  goalBudgetCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.surface, borderRadius: 20, padding: 18, marginBottom: 12, borderWidth: 1, borderColor: COLORS.border },
   goalBudgetLeft: { flex: 1 },
   goalBudgetLabel: { fontSize: 10, fontWeight: '700', color: COLORS.textSecondary, letterSpacing: 1.5, marginBottom: 4 },
   goalBudgetName: { fontSize: 15, fontWeight: '600', color: COLORS.text },
@@ -505,6 +696,15 @@ const styles = StyleSheet.create({
   goalBudgetAmount: { fontSize: 22, fontWeight: '800', color: COLORS.success, letterSpacing: -0.5 },
   goalBudgetSub: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
 
+  /* Finance Cards (Subscriptions, Investments, EMIs) */
+  financeCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.surface, borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border },
+  financeLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
+  financeEmoji: { fontSize: 24 },
+  financeTitle: { fontSize: 15, fontWeight: '700', color: COLORS.text, marginBottom: 3 },
+  financeSub: { fontSize: 12, color: COLORS.textSecondary },
+  financeArrow: { fontSize: 22, color: COLORS.textSecondary, fontWeight: '300' },
+
+  /* Budget Modal */
   budgetModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   budgetModalContainer: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40, borderWidth: 1, borderColor: COLORS.glassBorder, borderBottomWidth: 0 },
   budgetModalHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: COLORS.surfaceHigher, alignSelf: 'center', marginBottom: 20 },
@@ -523,4 +723,26 @@ const styles = StyleSheet.create({
   fab: { position: 'absolute', right: 20, bottom: 20, flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.primary, paddingHorizontal: 22, paddingVertical: 14, borderRadius: 28, elevation: 8, shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 16 },
   fabIcon: { color: '#FFFFFF', fontSize: 20, fontWeight: '800', marginRight: 6 },
   fabText: { color: '#FFFFFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.3 },
+
+  /* Overdue Subscription Popup */
+  overdueOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
+  overdueContent: { backgroundColor: COLORS.surface, borderRadius: 24, padding: 28, margin: 24, width: '85%', alignItems: 'center', borderWidth: 1, borderColor: COLORS.glassBorder },
+  overdueEmoji: { fontSize: 40, marginBottom: 12 },
+  overdueTitle: { fontSize: 18, fontWeight: '800', color: COLORS.text, textAlign: 'center', marginBottom: 8 },
+  overdueSub: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  overdueRemoveBtn: { backgroundColor: `${COLORS.danger}15`, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 24, width: '100%', alignItems: 'center', marginBottom: 10, borderWidth: 1, borderColor: `${COLORS.danger}30` },
+  overdueRemoveText: { fontSize: 15, fontWeight: '700', color: COLORS.danger },
+  overdueSkipBtn: { backgroundColor: COLORS.glass, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 24, width: '100%', alignItems: 'center', borderWidth: 1, borderColor: COLORS.glassBorder },
+  overdueSkipText: { fontSize: 14, fontWeight: '600', color: COLORS.textSecondary },
+
+  /* EMI Celebration */
+  celebrationContent: { backgroundColor: COLORS.surface, borderRadius: 28, padding: 32, margin: 24, width: '85%', alignItems: 'center', borderWidth: 1, borderColor: COLORS.glassBorder },
+  celebrationEmoji: { fontSize: 64, marginBottom: 16 },
+  celebrationTitle: { fontSize: 28, fontWeight: '800', color: COLORS.success, textAlign: 'center', marginBottom: 8 },
+  celebrationSub: { fontSize: 16, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 24, marginBottom: 16 },
+  celebrationBadge: { backgroundColor: `${COLORS.success}20`, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, marginBottom: 24 },
+  celebrationBadgeText: { fontSize: 13, fontWeight: '800', color: COLORS.success, letterSpacing: 1 },
+  celebrationBtn: { borderRadius: 30, overflow: 'hidden', width: '100%' },
+  celebrationBtnGrad: { paddingVertical: 16, alignItems: 'center', borderRadius: 30 },
+  celebrationBtnText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
 });

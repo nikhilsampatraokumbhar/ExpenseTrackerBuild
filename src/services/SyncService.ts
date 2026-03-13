@@ -299,16 +299,31 @@ export async function removeSplitMemberCloud(
   if (!doc.exists) return;
 
   const txn = doc.data() as GroupTransaction;
+  const removedSplit = txn.splits.find(s => s.userId === memberUserId);
+  if (!removedSplit) return;
+
   const newSplits = txn.splits.filter(s => s.userId !== memberUserId);
   if (newSplits.length === 0) return;
 
-  const perPerson = Math.round((txn.amount / newSplits.length) * 100) / 100;
-  const totalFromSplits = perPerson * newSplits.length;
-  const roundingDiff = Math.round((txn.amount - totalFromSplits) * 100) / 100;
-  const updatedSplits = newSplits.map((s, i) => ({
-    ...s,
-    amount: i === newSplits.length - 1 ? perPerson + roundingDiff : perPerson,
-  }));
+  // Redistribute removed member's share among non-payer members only
+  const nonPayerSplits = newSplits.filter(s => s.userId !== txn.addedBy);
+  let updatedSplits: Split[];
+  if (nonPayerSplits.length > 0) {
+    const extraPerPerson = Math.round((removedSplit.amount / nonPayerSplits.length) * 100) / 100;
+    const totalExtra = extraPerPerson * nonPayerSplits.length;
+    const roundingDiff = Math.round((removedSplit.amount - totalExtra) * 100) / 100;
+    let applied = 0;
+    updatedSplits = newSplits.map(s => {
+      if (s.userId === txn.addedBy) return s;
+      applied++;
+      return {
+        ...s,
+        amount: s.amount + extraPerPerson + (applied === nonPayerSplits.length ? roundingDiff : 0),
+      };
+    });
+  } else {
+    updatedSplits = newSplits;
+  }
 
   await docRef.update({ splits: updatedSplits });
 }

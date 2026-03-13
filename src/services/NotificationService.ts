@@ -6,6 +6,7 @@ import notifee, {
 import { ParsedTransaction, ActiveTracker, TrackerType } from '../models/types';
 import { formatCurrency } from '../utils/helpers';
 import { saveTransaction, addGroupTransaction, getOrCreateUser } from './StorageService';
+import { processTransactionForTracking } from './AutoDetectionService';
 
 const CHANNEL_ID = 'trackk-transactions';
 
@@ -37,7 +38,8 @@ export function registerNotificationCallbacks(
  */
 function makeNotificationId(parsed: ParsedTransaction): string {
   const roundedTs = Math.floor(parsed.timestamp / 5000) * 5000;
-  return `txn_${parsed.amount}_${roundedTs}`;
+  const merchant = (parsed.merchant || 'unknown').toLowerCase().replace(/\s+/g, '').slice(0, 10);
+  return `txn_${parsed.amount}_${merchant}_${roundedTs}`;
 }
 
 export async function showTransactionNotification(
@@ -128,29 +130,33 @@ export async function handleNotificationEvent(
 
     if (actionId === 'add_to_tracker' && detail.notification?.data) {
       const data = detail.notification.data;
+      const amt = Number(data.amount);
+      if (!amt || amt <= 0 || !isFinite(amt)) return;
       const tracker: ActiveTracker = {
         type: data.trackerType as any,
         id: data.trackerId,
         label: data.trackerLabel,
       };
       const parsed: ParsedTransaction = {
-        amount: Number(data.amount),
+        amount: amt,
         type: 'debit',
         merchant: data.merchant || undefined,
         bank: data.bank || undefined,
         rawMessage: data.rawMessage,
-        timestamp: Number(data.timestamp),
+        timestamp: Number(data.timestamp) || Date.now(),
       };
       if (addToTrackerCallback) addToTrackerCallback(parsed, tracker);
     } else if (actionId === 'choose_tracker' && detail.notification?.data) {
       const data = detail.notification.data;
+      const amt = Number(data.amount);
+      if (!amt || amt <= 0 || !isFinite(amt)) return;
       const parsed: ParsedTransaction = {
-        amount: Number(data.amount),
+        amount: amt,
         type: 'debit',
         merchant: data.merchant || undefined,
         bank: data.bank || undefined,
         rawMessage: data.rawMessage,
-        timestamp: Number(data.timestamp),
+        timestamp: Number(data.timestamp) || Date.now(),
       };
       if (chooseTrackerCallback) chooseTrackerCallback(parsed);
     }
@@ -166,17 +172,24 @@ export function registerBackgroundHandler(): void {
 
       if (actionId === 'add_to_tracker' && detail.notification?.data) {
         const data = detail.notification.data as Record<string, string>;
+        const parsedAmount = Number(data.amount);
+        if (!parsedAmount || parsedAmount <= 0 || !isFinite(parsedAmount)) return;
+
         const parsed: ParsedTransaction = {
-          amount: Number(data.amount),
+          amount: parsedAmount,
           type: 'debit',
           merchant: data.merchant || undefined,
           bank: data.bank || undefined,
           rawMessage: data.rawMessage,
-          timestamp: Number(data.timestamp),
+          timestamp: Number(data.timestamp) || Date.now(),
         };
         const trackerType = data.trackerType as TrackerType;
         const trackerId = data.trackerId;
         const user = await getOrCreateUser();
+
+        // Auto-detect subscriptions/EMIs/investments
+        try { await processTransactionForTracking(parsed); } catch {}
+
         if (trackerType === 'group') {
           await addGroupTransaction(parsed, trackerId, user.id);
         } else {

@@ -3,6 +3,7 @@ import {
   User, Transaction, Group, GroupTransaction, Split,
   TrackerType, ParsedTransaction, SavingsGoal, DailySpend, Settlement,
   SavingsJarEntry, FinanceItem, ReimbursementTrip,
+  UserSubscriptionItem, InvestmentItem, EMIItem,
 } from '../models/types';
 import { generateId } from '../utils/helpers';
 import { buildDescription } from './TransactionParser';
@@ -18,6 +19,12 @@ const KEYS = {
   SETTLEMENTS: (groupId: string) => `@et_settlements_${groupId}`,
   SHARED_FINANCES: '@et_shared_finances',
   REIMBURSEMENT_TRIPS: '@et_reimbursement_trips',
+  SUBSCRIPTIONS: '@et_subscriptions',
+  INVESTMENTS: '@et_investments',
+  EMIS: '@et_emis',
+  SUBSCRIPTIONS_ONBOARDED: '@et_subscriptions_onboarded',
+  INVESTMENTS_ONBOARDED: '@et_investments_onboarded',
+  EMIS_ONBOARDED: '@et_emis_onboarded',
 };
 
 // ─── User ────────────────────────────────────────────────────────────────────
@@ -160,6 +167,33 @@ export async function updateGroup(groupId: string, data: Partial<Group>): Promis
   }
 }
 
+export async function removeGroupMember(groupId: string, memberUserId: string): Promise<void> {
+  // Remove member from group
+  const groups = await getGroups();
+  const idx = groups.findIndex(g => g.id === groupId);
+  if (idx === -1) return;
+  groups[idx] = {
+    ...groups[idx],
+    members: groups[idx].members.filter(m => m.userId !== memberUserId),
+  };
+  await saveGroups(groups);
+
+  // Mark all their unsettled splits as settled in existing transactions
+  const txns = await getGroupTransactions(groupId);
+  let changed = false;
+  for (const txn of txns) {
+    for (const split of txn.splits) {
+      if (split.userId === memberUserId && !split.settled) {
+        split.settled = true;
+        changed = true;
+      }
+    }
+  }
+  if (changed) {
+    await saveGroupTransactions(groupId, txns);
+  }
+}
+
 export async function archiveGroup(groupId: string): Promise<void> {
   const groups = await getGroups();
   const idx = groups.findIndex(g => g.id === groupId);
@@ -232,16 +266,33 @@ export async function removeSplitMember(
   if (idx === -1) return;
 
   const txn = { ...all[idx] };
+  const removedSplit = txn.splits.find(s => s.userId === memberUserId);
+  if (!removedSplit) return;
+
+  // Remove the member from splits
   const newSplits = txn.splits.filter(s => s.userId !== memberUserId);
   if (newSplits.length === 0) return;
 
-  const perPerson = Math.round((txn.amount / newSplits.length) * 100) / 100;
-  const totalFromSplits = perPerson * newSplits.length;
-  const roundingDiff = Math.round((txn.amount - totalFromSplits) * 100) / 100;
-  txn.splits = newSplits.map((s, i) => ({
-    ...s,
-    amount: i === newSplits.length - 1 ? perPerson + roundingDiff : perPerson,
-  }));
+  // Redistribute the removed member's share among non-payer members only
+  const nonPayerSplits = newSplits.filter(s => s.userId !== txn.addedBy);
+  if (nonPayerSplits.length > 0) {
+    const extraPerPerson = Math.round((removedSplit.amount / nonPayerSplits.length) * 100) / 100;
+    const totalExtra = extraPerPerson * nonPayerSplits.length;
+    const roundingDiff = Math.round((removedSplit.amount - totalExtra) * 100) / 100;
+    let applied = 0;
+    txn.splits = newSplits.map(s => {
+      if (s.userId === txn.addedBy) return s; // payer keeps same amount
+      applied++;
+      return {
+        ...s,
+        amount: s.amount + extraPerPerson + (applied === nonPayerSplits.length ? roundingDiff : 0),
+      };
+    });
+  } else {
+    // Only payer left — just keep their existing split
+    txn.splits = newSplits;
+  }
+
   all[idx] = txn;
   await saveGroupTransactions(groupId, all);
 }
@@ -611,12 +662,109 @@ export async function saveReimbursementExpense(
   return txn;
 }
 
+// ─── Subscriptions ──────────────────────────────────────────────────────
+
+export async function getSubscriptions(): Promise<UserSubscriptionItem[]> {
+  const raw = await AsyncStorage.getItem(KEYS.SUBSCRIPTIONS);
+  return raw ? JSON.parse(raw) : [];
+}
+
+export async function saveSubscription(item: UserSubscriptionItem): Promise<void> {
+  const all = await getSubscriptions();
+  const idx = all.findIndex(s => s.id === item.id);
+  if (idx !== -1) {
+    all[idx] = item;
+  } else {
+    all.push(item);
+  }
+  await AsyncStorage.setItem(KEYS.SUBSCRIPTIONS, JSON.stringify(all));
+}
+
+export async function deleteSubscription(id: string): Promise<void> {
+  const all = await getSubscriptions();
+  await AsyncStorage.setItem(KEYS.SUBSCRIPTIONS, JSON.stringify(all.filter(s => s.id !== id)));
+}
+
+export async function hasSubscriptionsOnboarded(): Promise<boolean> {
+  const val = await AsyncStorage.getItem(KEYS.SUBSCRIPTIONS_ONBOARDED);
+  return val === 'true';
+}
+
+export async function setSubscriptionsOnboarded(): Promise<void> {
+  await AsyncStorage.setItem(KEYS.SUBSCRIPTIONS_ONBOARDED, 'true');
+}
+
+// ─── Investments ────────────────────────────────────────────────────────
+
+export async function getInvestments(): Promise<InvestmentItem[]> {
+  const raw = await AsyncStorage.getItem(KEYS.INVESTMENTS);
+  return raw ? JSON.parse(raw) : [];
+}
+
+export async function saveInvestment(item: InvestmentItem): Promise<void> {
+  const all = await getInvestments();
+  const idx = all.findIndex(s => s.id === item.id);
+  if (idx !== -1) {
+    all[idx] = item;
+  } else {
+    all.push(item);
+  }
+  await AsyncStorage.setItem(KEYS.INVESTMENTS, JSON.stringify(all));
+}
+
+export async function deleteInvestment(id: string): Promise<void> {
+  const all = await getInvestments();
+  await AsyncStorage.setItem(KEYS.INVESTMENTS, JSON.stringify(all.filter(s => s.id !== id)));
+}
+
+export async function hasInvestmentsOnboarded(): Promise<boolean> {
+  const val = await AsyncStorage.getItem(KEYS.INVESTMENTS_ONBOARDED);
+  return val === 'true';
+}
+
+export async function setInvestmentsOnboarded(): Promise<void> {
+  await AsyncStorage.setItem(KEYS.INVESTMENTS_ONBOARDED, 'true');
+}
+
+// ─── EMIs ───────────────────────────────────────────────────────────────
+
+export async function getEMIs(): Promise<EMIItem[]> {
+  const raw = await AsyncStorage.getItem(KEYS.EMIS);
+  return raw ? JSON.parse(raw) : [];
+}
+
+export async function saveEMI(item: EMIItem): Promise<void> {
+  const all = await getEMIs();
+  const idx = all.findIndex(s => s.id === item.id);
+  if (idx !== -1) {
+    all[idx] = item;
+  } else {
+    all.push(item);
+  }
+  await AsyncStorage.setItem(KEYS.EMIS, JSON.stringify(all));
+}
+
+export async function deleteEMI(id: string): Promise<void> {
+  const all = await getEMIs();
+  await AsyncStorage.setItem(KEYS.EMIS, JSON.stringify(all.filter(s => s.id !== id)));
+}
+
+export async function hasEMIsOnboarded(): Promise<boolean> {
+  const val = await AsyncStorage.getItem(KEYS.EMIS_ONBOARDED);
+  return val === 'true';
+}
+
+export async function setEMIsOnboarded(): Promise<void> {
+  await AsyncStorage.setItem(KEYS.EMIS_ONBOARDED, 'true');
+}
+
 // ─── Clear all data ──────────────────────────────────────────────────────────
 
 export async function clearAllData(): Promise<void> {
   const groups = await getGroups();
   const keys = [
     KEYS.USER, KEYS.TRANSACTIONS, KEYS.GROUPS, KEYS.GOALS, KEYS.DAILY_SPENDS, KEYS.SAVINGS_JAR, KEYS.SHARED_FINANCES, KEYS.REIMBURSEMENT_TRIPS,
+    KEYS.SUBSCRIPTIONS, KEYS.INVESTMENTS, KEYS.EMIS, KEYS.SUBSCRIPTIONS_ONBOARDED, KEYS.INVESTMENTS_ONBOARDED, KEYS.EMIS_ONBOARDED,
     ...groups.map(g => KEYS.GROUP_TRANSACTIONS(g.id)),
     ...groups.map(g => KEYS.SETTLEMENTS(g.id)),
     // Also clear cache, tracker state, and premium data

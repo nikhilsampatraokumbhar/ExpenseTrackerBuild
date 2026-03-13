@@ -23,6 +23,9 @@ import ReferralScreen from '../screens/ReferralScreen';
 import SplitEditorScreen from '../screens/SplitEditorScreen';
 import NightlyReviewScreen from '../screens/NightlyReviewScreen';
 import QuickAddScreen from '../screens/QuickAddScreen';
+import SubscriptionsScreen from '../screens/SubscriptionsScreen';
+import InvestmentsScreen from '../screens/InvestmentsScreen';
+import EMIsScreen from '../screens/EMIsScreen';
 import LoginScreen from '../screens/LoginScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 
@@ -53,6 +56,9 @@ export type RootStackParamList = {
   QuickAdd: { amount?: number; description?: string } | undefined;
   Pricing: undefined;
   Referral: undefined;
+  Subscriptions: undefined;
+  Investments: undefined;
+  EMIs: undefined;
 };
 
 export type TabParamList = {
@@ -128,15 +134,53 @@ function useExitConfirmation() {
 
   useFocusEffect(
     useCallback(() => {
+      if (Platform.OS !== 'android') return;
       const sub = BackHandler.addEventListener('hardwareBackPress', handleBackPress);
       return () => sub.remove();
     }, [handleBackPress]),
   );
 }
 
+/** On non-Home tabs, back button navigates to Home instead of exiting the app */
+function useBackToHome() {
+  const navigation = useNavigation<any>();
+
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== 'android') return;
+      const onBack = () => {
+        navigation.navigate('Home');
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
+      return () => sub.remove();
+    }, [navigation]),
+  );
+}
+
 function HomeWithExitConfirmation() {
   useExitConfirmation();
   return <HomeScreen />;
+}
+
+function PersonalWithBackToHome() {
+  useBackToHome();
+  return <PersonalExpenseScreen />;
+}
+
+function GroupsWithBackToHome() {
+  useBackToHome();
+  return <GroupListScreen />;
+}
+
+function InsightsWithBackToHome() {
+  useBackToHome();
+  return <InsightsScreen />;
+}
+
+function ProfileWithBackToHome() {
+  useBackToHome();
+  return <ProfileScreen />;
 }
 
 function MainTabs() {
@@ -177,10 +221,10 @@ function MainTabs() {
       })}
     >
       <Tab.Screen name="Home" component={HomeWithExitConfirmation} />
-      <Tab.Screen name="Personal" component={PersonalExpenseScreen} />
-      <Tab.Screen name="Groups" component={GroupListScreen} />
-      <Tab.Screen name="Insights" component={InsightsScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen name="Personal" component={PersonalWithBackToHome} />
+      <Tab.Screen name="Groups" component={GroupsWithBackToHome} />
+      <Tab.Screen name="Insights" component={InsightsWithBackToHome} />
+      <Tab.Screen name="Profile" component={ProfileWithBackToHome} />
     </Tab.Navigator>
   );
 }
@@ -326,6 +370,21 @@ export function AppNavigator() {
               name="QuickAdd"
               component={QuickAddScreen}
               options={{ title: 'Quick Add', presentation: 'modal', headerShown: false }}
+            />
+            <Stack.Screen
+              name="Subscriptions"
+              component={SubscriptionsScreen}
+              options={{ title: 'Subscriptions', headerBackTitle: '' }}
+            />
+            <Stack.Screen
+              name="Investments"
+              component={InvestmentsScreen}
+              options={{ title: 'Investments', headerBackTitle: '' }}
+            />
+            <Stack.Screen
+              name="EMIs"
+              component={EMIsScreen}
+              options={{ title: 'EMIs', headerBackTitle: '' }}
             />
             {Platform.OS === 'ios' && (
               <Stack.Screen

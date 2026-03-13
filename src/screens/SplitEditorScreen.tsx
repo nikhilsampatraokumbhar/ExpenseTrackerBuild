@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, KeyboardAvoidingView, Platform,
@@ -43,6 +43,8 @@ export default function SplitEditorScreen() {
   const [splitMode, setSplitMode] = useState<'equal' | 'amount'>('equal');
   const [saving, setSaving] = useState(false);
   const [groupName, setGroupName] = useState('');
+
+  const savingRef = useRef(false); // ref guard against double-tap race
 
   // Guest add state
   const [showGuestInput, setShowGuestInput] = useState(false);
@@ -154,6 +156,8 @@ export default function SplitEditorScreen() {
       return;
     }
 
+    if (savingRef.current) return; // prevent double-tap race
+    savingRef.current = true;
     setSaving(true);
 
     try {
@@ -263,6 +267,7 @@ export default function SplitEditorScreen() {
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Failed to save expense');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -273,7 +278,7 @@ export default function SplitEditorScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
       >
         <ScrollView
           contentContainerStyle={styles.scroll}
