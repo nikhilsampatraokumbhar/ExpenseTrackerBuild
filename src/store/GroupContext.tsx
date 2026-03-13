@@ -167,6 +167,8 @@ export function GroupProvider({ children }: { children: ReactNode }) {
     // Step 2: Set up real-time listener / fetch fresh data
     if (isAuthenticated) {
       // Set up real-time listener for group transactions
+      // The listener fires immediately with current data, so no separate initial fetch needed
+      // (doing both causes a race where the fetch overwrites newer listener data)
       const unsub = onGroupTransactionsChanged(groupId, (txns) => {
         setActiveGroupTransactions(txns);
         setActiveGroupDebts(calculateDebts(txns));
@@ -174,17 +176,6 @@ export function GroupProvider({ children }: { children: ReactNode }) {
         AsyncStorage.setItem(CACHE_KEYS.GROUP_TXNS(groupId), JSON.stringify(txns)).catch(() => {});
       });
       setUnsubscribe(() => unsub);
-
-      // Also do an initial fetch
-      try {
-        const txns = await getGroupTransactionsCloud(groupId);
-        setActiveGroupTransactions(txns);
-        setActiveGroupDebts(calculateDebts(txns));
-        // Cache the result
-        AsyncStorage.setItem(CACHE_KEYS.GROUP_TXNS(groupId), JSON.stringify(txns)).catch(() => {});
-      } catch {
-        // Real-time listener will handle updates
-      }
     } else {
       // Local fallback
       const txns = await getGroupTransactionsLocal(groupId);

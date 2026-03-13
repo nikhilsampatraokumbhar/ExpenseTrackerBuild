@@ -217,18 +217,28 @@ function namesMatch(a: string, b: string): boolean {
 /** Calculate next billing date from current date */
 function calcNextBillingDate(billingDay: number, cycle: 'monthly' | 'yearly'): string {
   const now = new Date();
-  const day = Math.min(billingDay, 28);
 
   if (cycle === 'monthly') {
-    let next = new Date(now.getFullYear(), now.getMonth(), day);
+    // Use the actual billing day; JS Date handles overflow (e.g. day 31 in a 30-day month → next month 1st)
+    // But we want to clamp to end of month, so check actual days in month
+    const nextMonth0 = new Date(now.getFullYear(), now.getMonth(), 1);
+    const daysInThisMonth = new Date(nextMonth0.getFullYear(), nextMonth0.getMonth() + 1, 0).getDate();
+    const dayThisMonth = Math.min(billingDay, daysInThisMonth);
+    let next = new Date(now.getFullYear(), now.getMonth(), dayThisMonth);
     if (next <= now) {
-      next = new Date(now.getFullYear(), now.getMonth() + 1, day);
+      const daysInNextMonth = new Date(now.getFullYear(), now.getMonth() + 2, 0).getDate();
+      const dayNextMonth = Math.min(billingDay, daysInNextMonth);
+      next = new Date(now.getFullYear(), now.getMonth() + 1, dayNextMonth);
     }
     return next.toISOString().slice(0, 10);
   } else {
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const day = Math.min(billingDay, daysInMonth);
     let next = new Date(now.getFullYear(), now.getMonth(), day);
     if (next <= now) {
-      next = new Date(now.getFullYear() + 1, now.getMonth(), day);
+      const daysInFutureMonth = new Date(now.getFullYear() + 1, now.getMonth() + 1, 0).getDate();
+      const dayFuture = Math.min(billingDay, daysInFutureMonth);
+      next = new Date(now.getFullYear() + 1, now.getMonth(), dayFuture);
     }
     return next.toISOString().slice(0, 10);
   }

@@ -79,9 +79,10 @@ export default function HomeScreen() {
   // Auto-open SplitEditor when a group tracker is auto-routed from notification
   useEffect(() => {
     if (pendingTransaction && pendingGroupTracker) {
+      // Capture data before clearing from queue
       const txn = pendingTransaction;
       const tracker = pendingGroupTracker;
-      clearPendingTransaction();
+      // Navigate first, then clear — data is passed via nav params so safe even if clear races
       nav.navigate('SplitEditor', {
         groupId: tracker.id,
         amount: txn.amount,
@@ -90,6 +91,7 @@ export default function HomeScreen() {
           : undefined,
         merchant: txn.merchant || undefined,
       });
+      clearPendingTransaction();
     }
   }, [pendingTransaction, pendingGroupTracker]);
 
@@ -524,16 +526,17 @@ export default function HomeScreen() {
         trackers={activeTrackers}
         onSelect={async tracker => {
           if (pendingTransaction) {
+            const txn = pendingTransaction;
             if (tracker.type === 'group') {
-              clearPendingTransaction();
               nav.navigate('SplitEditor', {
                 groupId: tracker.id,
-                amount: pendingTransaction.amount,
-                description: pendingTransaction.merchant ? `Payment at ${pendingTransaction.merchant}` : undefined,
-                merchant: pendingTransaction.merchant || undefined,
+                amount: txn.amount,
+                description: txn.merchant ? `Payment at ${txn.merchant}` : undefined,
+                merchant: txn.merchant || undefined,
               });
+              clearPendingTransaction();
             } else {
-              await addTransactionToTracker(pendingTransaction, tracker.type, tracker.id);
+              await addTransactionToTracker(txn, tracker.type, tracker.id);
               clearPendingTransaction();
               await loadTransactions();
             }

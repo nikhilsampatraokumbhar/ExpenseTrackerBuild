@@ -114,7 +114,12 @@ function checkDuplicate(signal: TransactionSignal): DeduplicationResult {
     const amountMatch = Math.abs(existing.parsed.amount - signal.parsed.amount) <= DEDUP_AMOUNT_TOLERANCE;
     const timeMatch = Math.abs(existing.receivedAt - signal.receivedAt) <= DEDUP_WINDOW_MS;
 
-    if (amountMatch && timeMatch) {
+    // If both have merchants and they differ, not a duplicate
+    const existingMerchant = (existing.parsed.merchant || '').toLowerCase().replace(/\s+/g, '');
+    const signalMerchant = (signal.parsed.merchant || '').toLowerCase().replace(/\s+/g, '');
+    const merchantConflict = existingMerchant && signalMerchant && existingMerchant !== signalMerchant;
+
+    if (amountMatch && timeMatch && !merchantConflict) {
       // Same transaction detected from multiple sources
       // Merge confidence: multiple confirmations increase confidence
       const mergedConfidence = Math.min(
